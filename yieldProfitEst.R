@@ -1,6 +1,6 @@
 # Basic estimates of profitability using rasterized yield data
 # source("D:\\geoData\\SMSexport\\helperFunctions.R")
-setwd("C:/Users/Samuel/Dropbox/PPSN Cleaned Yield/From SMSexport")
+setwd("C:/Users/Samuel/Documents/Projects/UofC postdoc/PPSN_code")
 source("./helperFunctions.R")
 
 #Top 10 crop types from 2022:
@@ -16,12 +16,15 @@ library(ggpubr)
 ha2ac <- 2.47105 #Acres per hectare
 
 # Single grower/year: Clinton Monchuk 2022 -----------------
-debugonce(profEstimates)
+# debugonce(profEstimates)
+##Galpern:
 # temp <- profEstimates("./202201 CLINTON MONCHUK/rasters", 
 #                       excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
+
+#Multivac:
 temp <- profEstimates("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters\\202201 CLINTON MONCHUK\\rasters",
                       soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
-                      cropPrices = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\From SMSexport\\cropPricesCSV.csv",
+                      cropPrices = "./cropPricesCSV.csv",
                       boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
                       excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
 
@@ -51,16 +54,16 @@ p2 <- temp %>%
   ggplot()+geom_histogram(aes(x=Profit_ac))+facet_wrap(~CropType,scales='free',nrow=1)+
   geom_vline(xintercept = 0,col='red')+
   labs(x='Profit ($/ac)',y='Count')+theme_bw()
-ggarrange(p1,p2,ncol=1,nrow=2)
+ggarrange(p1,p2,ncol=1,nrow=2); rm(p1,p2)
 
 #Distribution of crop types and avg yield per year
 
-debugonce(profEstimates)
+# debugonce(profEstimates)
 # temp <- profEstimates("./202201 CLINTON MONCHUK/rasters",includeYield = TRUE)
 temp <- profEstimates("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters\\202201 CLINTON MONCHUK\\rasters",
                       soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
-                      cropPrices = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\From SMSexport\\cropPricesCSV.csv",
-                      bulkDens = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\From SMSexport\\cropBulkDensity.csv",
+                      cropPrices = "./cropPricesCSV.csv",
+                      bulkDens = "./cropBulkDensity.csv",
                       boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
                       excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
 
@@ -73,17 +76,29 @@ temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
   
 # Overall profitability -----------------
 
-yDirs <- list.dirs('.',full.names = TRUE) #Yield directory
-yDirs <- yDirs[grepl('clean$',yDirs)]
-rDirs <- gsub('clean$','rasters',yDirs) #Raster directory
+# #Galpern:
+# yDirs <- list.dirs('.',full.names = TRUE) #Yield directory
+# yDirs <- yDirs[grepl('clean$',yDirs)]
+# rDirs <- gsub('clean$','rasters',yDirs) #Raster directory
+#Multivac:
+rDirs <- list.dirs("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters")
+rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory
 canProf <- vector('list',length(rDirs))
 names(canProf) <- basename(gsub('/rasters','',rDirs))
 
 pb <- txtProgressBar(style=3)
 for(i in 1:length(rDirs)){
   if(is.null(canProf[[i]])){
-    canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
-    # if(length(canProf[[i]])==3 & class(canProf[[i]])=='data.frame') canProf[[i]] <- canProf[[i]] %>% filter(CropType=='Canola')  
+    ##Galpern:
+    # canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
+    
+    canProf[[i]] <- profEstimates(rDirs[i],
+                                  soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
+                                  cropPrices = "./cropPricesCSV.csv",
+                                  bulkDens = "./cropBulkDensity.csv",
+                                  boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
+                                  excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
+    
   }
   setTxtProgressBar(pb,i/length(rDirs))
 }
@@ -93,7 +108,7 @@ canProf <- canProf[sapply(canProf,length)==4] %>%
   bind_rows(.id = 'grower')
 
 #Canola profitability
-canProf%>% filter(CropType=='Canola') %>% 
+canProf %>% filter(CropType=='Canola') %>% 
   ggplot()+geom_histogram(aes(x=Profit_ac))+
   geom_vline(xintercept = 0,col='red')+
   labs(x='Profit ($/acre)',y='Count')+
@@ -105,12 +120,11 @@ canProf%>% filter(CropType=='Canola') %>%
   # geom_hline(yintercept = 0.1,col='red')+
   # coord_cartesian(xlim=c(NA,200),ylim=c(0,0.2))+
   labs(x='Profit ($/acre)',y='Cumulative distribution')+
-  scale_x_continuous(breaks = seq(-200,1200,50))+
-  scale_y_continuous(breaks = seq(0,1,0.02))+
+  # scale_x_continuous(breaks = seq(-200,1200,50))+
+  # scale_y_continuous(breaks = seq(0,1,0.02))+
   theme_bw()
 
 # Overall profitability
-
 canProf %>% ggplot()+geom_histogram(aes(x=Profit_ac))+
   geom_vline(xintercept = 0,col='red')+
   labs(x='Profit ($/acre)',y='Count')+
@@ -147,13 +161,18 @@ canProf %>% filter(CropType %in% top6crop) %>%
   geom_vline(xintercept = 0,col='red')+
   # coord_cartesian(xlim=c(NA,1200))+
   labs(x='Profit ($/acre)',y='Cumulative distribution')+
-  coord_cartesian(xlim=c(NA,200),ylim=c(0,0.2))+
-  scale_x_continuous(breaks = seq(-200,1200,100))+
+  coord_cartesian(xlim=c(NA,2000))+
+  # scale_x_continuous(breaks = seq(-200,1200,100))+
   scale_y_continuous(breaks = seq(0,1,0.1))+
   scale_colour_brewer(type = 'qual')+
   theme_bw()
 
-#
+
+# Report for growers ------------------------------------------------------
+
+library(officer)
+
+
 
 # Other --------------------------
 
