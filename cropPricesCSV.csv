@@ -1,0 +1,71 @@
+Prov,Year,SoilZone,CropType,AvgCost_ha,CropUsed,CropPrice_t,Bu_t,CropPrice_bu,SourceKnown
+Manitoba,2022,Black,Spring Wheat,240.4,Wheat,446.2,36.7,12.16,Known
+Manitoba,2022,Black,Barley,224.44,Barley,362.9,45.9,7.91,Known
+Manitoba,2022,Black,Canola,273.06,Canola,959.5,44.1,21.76,Known
+Saskatchewan,2022,Black,Oats,352.45,Oats,484.4,64.8,7.48,Known
+Saskatchewan,2022,Black,Canola,459.87,Canola ,952.3,44.1,21.59,Known
+Saskatchewan,2022,Black, Barley,342.67,Barley,371.3,45.9,8.09,Known
+Saskatchewan,2022,Black, Rye,304.37,Hybrid fall rye,330,39.368,8.38,Known
+Saskatchewan,2022,Black, Spring Wheat,396.15,Non durum wheat,446.3,36.7,12.16,Known
+Saskatchewan,2022,Black, Mustard,240.91,Brown mustard,2050,40,51.25,Known
+Saskatchewan,2022,Black, Lentils,269.85,Lentils,909.9,36.7,24.79,Known
+Saskatchewan,2022,Black, Peas,312.55,Dry Peas,541.5,36.7,14.75,Known
+Saskatchewan,2022,Black, Soybeans,291.13,Soybeans ,725.33,36.744,19.74,Known
+Saskatchewan,2022,Black, Flaxseed,291.48,Flaxseed,1209.22,39.368,30.72,Known
+Saskatchewan,2022,Brown,Spring Wheat,324.65,Non durum wheat,446.3,36.7,12.16,Known
+Saskatchewan,2022,Brown, Peas,264.84,Dry Peas,541.5,36.7,14.75,Known
+Saskatchewan,2022,Brown, Mustard,240.91,Brown mustard,2050,40,51.25,Known
+Saskatchewan,2022,Brown, Canola,391.91,Canola ,952.3,44.1,21.59,Known
+Saskatchewan,2022,Brown, Flaxseed,256.01,Flaxseed,1209.22,39.368,30.72,Known
+Saskatchewan,2022,Brown, Lentils,229.05,Lentils,909.9,36.7,24.79,Known
+Saskatchewan,2022,Dark Brown,Canola,429.92,Canola ,952.3,44.1,21.59,Known
+Saskatchewan,2022,Dark Brown, Spring Wheat,362.44,Non durum wheat,446.3,36.7,12.16,Known
+Saskatchewan,2022,Dark Brown, Barley,290.91,Barley,371.3,45.9,8.09,Known
+Saskatchewan,2022,Dark Brown, Chickpeas,315.56,Desi Chickpeas,40.35,33.3,1.21,Known
+Saskatchewan,2022,Dark Brown, Lentils,236.45,Lentils,909.9,36.7,24.79,Known
+Saskatchewan,2022,Dark Brown, Mustard,240.91,Brown mustard,2050,40,51.25,Known
+Saskatchewan,2022,Dark Brown, Oats,277.45,Oats,484.4,64.8,7.48,Known
+Saskatchewan,2022,Dark Brown, Corn,423.57,Corn,349,39.368,8.87,Known
+Saskatchewan,2022,Dark Brown, Peas,283.65,Dry Peas,541.5,36.7,14.75,Known
+Saskatchewan,2022,Dark Brown, Flaxseed,287.91,Flaxseed,1209.22,39.368,30.72,Known
+Saskatchewan,2022,Dark Brown, Winter Wheat,330.3,Non durum wheat,446.3,36.7,12.16,Known
+Saskatchewan,2022,Dark Brown, Rye,283.17,Rye,330,39.368,8.38,Known
+Alberta,2022,Black,Barley,224.44,Barley,362.9,45.9,7.91,PLACEHOLDER
+Alberta,2022,Black,Canola,273.06,Canola ,959.5,44.1,21.76,PLACEHOLDER
+Alberta,2022,Black,Corn,123,Corn,234,45.9296,5.09,PLACEHOLDER
+Alberta,2022,Black,Peas,123,Peas,234,36.744,6.37,PLACEHOLDER
+Alberta,2022,Black,Spring Wheat,240.4,Wheat,446.2,36.7,12.16,PLACEHOLDER
+Alberta,2022,Black,Flaxseed,123,Flaxseed,234,39.368,5.94,PLACEHOLDER
+Alberta,2022,Black,Lentils,123,Lentils,234,36.744,6.37,PLACEHOLDER
+Alberta,2022,Black,Mustard,123,Mustard,234,44.092,5.31,PLACEHOLDER
+Alberta,2022,Black,Oats,123,Oats,234,64.842,3.61,PLACEHOLDER
+Alberta,2022,Black,Rye,123,Rye,234,39.368,5.94,PLACEHOLDER
+Alberta,2022,Black,Soybeans,123,Soybeans,234,36.744,6.37,PLACEHOLDER
+Alberta,2022,Black,Winter Wheat,240.4,Wheat,446.2,36.7,12.16,PLACEHOLDER
+Alberta,2022,Black,Chickpeas,123,Chickpeas,234,36.7,6.38,PLACEHOLDER
+Alberta,2022,Brown,Barley,224.44,Barley,362.9,45.9,7.91,PLACEHOLDER
+Alberta,2022,Brown,Canola,273.06,Canola ,959.5,44.1,21.76,PLACEHOLDER
+Alberta,2022,Brown,Corn,123,Corn,234,45.9296,5.09,PLACEHOLDER
+Alberta,2022,Brown,Peas,123,Peas,234,36.744,6.37,PLACEHOLDER
+Alberta,2022,Brown,Spring Wheat,240.4,Wheat,446.2,36.7,12.16,PLACEHOLDER
+Alberta,2022,Brown,Flaxseed,123,Flaxseed,234,39.368,5.94,PLACEHOLDER
+Alberta,2022,Brown,Lentils,123,Lentils,234,36.744,6.37,PLACEHOLDER
+Alberta,2022,Brown,Mustard,123,Mustard,234,44.092,5.31,PLACEHOLDER
+Alberta,2022,Brown,Oats,123,Oats,234,64.842,3.61,PLACEHOLDER
+Alberta,2022,Brown,Rye,123,Rye,234,39.368,5.94,PLACEHOLDER
+Alberta,2022,Brown,Soybeans,123,Soybeans,234,36.744,6.37,PLACEHOLDER
+Alberta,2022,Brown,Winter Wheat,240.4,Wheat,446.2,36.7,12.16,PLACEHOLDER
+Alberta,2022,Brown,Chickpeas,123,Chickpeas,234,36.7,6.38,PLACEHOLDER
+Alberta,2022,Dark Brown,Barley,224.44,Barley,362.9,45.9,7.91,PLACEHOLDER
+Alberta,2022,Dark Brown,Canola,273.06,Canola ,959.5,44.1,21.76,PLACEHOLDER
+Alberta,2022,Dark Brown,Corn,123,Corn,234,45.9296,5.09,PLACEHOLDER
+Alberta,2022,Dark Brown,Peas,123,Peas,234,36.744,6.37,PLACEHOLDER
+Alberta,2022,Dark Brown,Spring Wheat,240.4,Wheat,446.2,36.7,12.16,PLACEHOLDER
+Alberta,2022,Dark Brown,Flaxseed,123,Flaxseed,234,39.368,5.94,PLACEHOLDER
+Alberta,2022,Dark Brown,Lentils,123,Lentils,234,36.744,6.37,PLACEHOLDER
+Alberta,2022,Dark Brown,Mustard,123,Mustard,234,44.092,5.31,PLACEHOLDER
+Alberta,2022,Dark Brown,Oats,123,Oats,234,64.842,3.61,PLACEHOLDER
+Alberta,2022,Dark Brown,Rye,123,Rye,234,39.368,5.94,PLACEHOLDER
+Alberta,2022,Dark Brown,Soybeans,123,Soybeans,234,36.744,6.37,PLACEHOLDER
+Alberta,2022,Dark Brown,Winter Wheat,240.4,Wheat,446.2,36.7,12.16,PLACEHOLDER
+Alberta,2022,Dark Brown,Chickpeas,123,Chickpeas,234,36.7,6.38,PLACEHOLDER
