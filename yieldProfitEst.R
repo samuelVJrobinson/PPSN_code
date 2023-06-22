@@ -15,19 +15,39 @@ library(ggpubr)
 
 ha2ac <- 2.47105 #Acres per hectare
 
-# Single grower/year: Clinton Monchuk 2022 -----------------
-# debugonce(profEstimates)
-##Galpern:
-# temp <- profEstimates("./202201 CLINTON MONCHUK/rasters", 
-#                       excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
+#Get data from rasters
 
+# #Galpern:
+# yDirs <- list.dirs('.',full.names = TRUE) #Yield directory
+# yDirs <- yDirs[grepl('clean$',yDirs)]
+# rDirs <- gsub('clean$','rasters',yDirs) #Raster directory
 #Multivac:
-temp <- profEstimates("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters\\202201 CLINTON MONCHUK\\rasters",
-                      soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
-                      cropPrices = "./cropPricesCSV.csv",
-                      boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
-                      excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
+rDirs <- list.dirs("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters")
+rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory
+canProf <- vector('list',length(rDirs))
+names(canProf) <- basename(gsub('/rasters','',rDirs))
 
+{pb <- txtProgressBar(style=3)
+for(i in 1:length(rDirs)){
+  if(is.null(canProf[[i]])){
+    ##Galpern:
+    # canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
+    
+    canProf[[i]] <- profEstimates(rDirs[i],
+                                  soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
+                                  cropPrices = "./data/cropPricesCSV.csv",
+                                  bulkDens = "./data/cropBulkDensity.csv",
+                                  boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
+                                  excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
+    
+  }
+  setTxtProgressBar(pb,i/length(rDirs))
+}
+close(pb)}
+
+# Single grower/year: Clinton Monchuk 2022 -----------------
+
+temp <- canProf[[1]]
 head(temp)
 
 temp %>% group_by(CropType) %>% 
@@ -67,42 +87,14 @@ temp <- profEstimates("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters\\
                       boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
                       excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
 
-temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
-  # head
-  group_by(Year,CropType) %>% 
-  summarize(medYield=median(Yield_buAc)) %>% 
-  ungroup() %>% 
-  pivot_wider(names_from='CropType',values_from='medYield')
+# temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
+#   # head
+#   group_by(Year,CropType) %>% 
+#   summarize(medYield=median(Yield_buAc)) %>% 
+#   ungroup() %>% 
+#   pivot_wider(names_from='CropType',values_from='medYield')
   
 # Overall profitability -----------------
-
-# #Galpern:
-# yDirs <- list.dirs('.',full.names = TRUE) #Yield directory
-# yDirs <- yDirs[grepl('clean$',yDirs)]
-# rDirs <- gsub('clean$','rasters',yDirs) #Raster directory
-#Multivac:
-rDirs <- list.dirs("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters")
-rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory
-canProf <- vector('list',length(rDirs))
-names(canProf) <- basename(gsub('/rasters','',rDirs))
-
-pb <- txtProgressBar(style=3)
-for(i in 1:length(rDirs)){
-  if(is.null(canProf[[i]])){
-    ##Galpern:
-    # canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
-    
-    canProf[[i]] <- profEstimates(rDirs[i],
-                                  soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
-                                  cropPrices = "./cropPricesCSV.csv",
-                                  bulkDens = "./cropBulkDensity.csv",
-                                  boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
-                                  excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
-    
-  }
-  setTxtProgressBar(pb,i/length(rDirs))
-}
-close(pb)
 
 canProf <- canProf[sapply(canProf,length)==4] %>% 
   bind_rows(.id = 'grower')
@@ -172,6 +164,53 @@ canProf %>% filter(CropType %in% top6crop) %>%
 
 library(officer)
 
+temp <- canProf[[1]] #Single grower/year
+
+#Table of summary yields
+yieldTable <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
+  group_by(CropType) %>% mutate(N=n()) %>% arrange(desc(N)) %>% 
+  ungroup() %>% 
+  mutate(CropType=factor(CropType,levels=unique(CropType))) %>% 
+  group_by(Year,CropType,.drop = FALSE) %>% 
+  summarize(medYield=round(median(Yield_buAc,na.rm=TRUE),0)) %>% 
+  mutate(medYield=ifelse(is.na(medYield),'-',as.character(medYield))) %>%
+  ungroup() %>% pivot_wider(names_from='CropType',values_from='medYield') %>%
+  arrange(desc(Year)) %>%   
+  slice(1:5) %>% column_to_rownames('Year') %>% 
+  select(1:6)
+
+#Figure of profit distributions
+profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
+  mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
+  ggplot(aes(x=Profit_ac))+
+  geom_density(fill='grey90')+
+  facet_wrap(~CropType)+
+  geom_vline(xintercept = 0,col='red')+
+  scale_y_continuous(labels = percent, name = "Percent of acres") +
+  labs(x='Profit ($/ac)',title='Grower: Clinton Monchuk, Year: 2022')+theme_bw()#+
+
+#Other values to replace
+numFieldYears <- length(unique(temp$FieldYear))
+numCropTypes <- length(unique(temp$CropType))
+numYears <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
+  select(Year) %>% distinct() %>% nrow()
+percMargAc <- temp %>% filter(!is.na(Profit_ac)) %>% 
+  mutate(NegProf=Profit_ac<0) %>% 
+  pull(NegProf) %>% mean(.)*100
+percMargAc <- ifelse(percMargAc<1,'less than 1',as.character(round(percMargAc)))
+
+template <- read_docx('./newsletter2023/templatePg2.docx') %>% 
+  body_replace_all_text(old_value = 'GROWERNAME',new_value = 'Clinton') %>% 
+  body_replace_all_text(old_value = 'NUMFIELDYEARS',new_value = as.character(numFieldYears)) %>% 
+  body_replace_all_text(old_value = 'NUMCROPS',new_value = as.character(numCropTypes)) %>% 
+  body_replace_all_text(old_value = 'NUMYEARS',new_value = as.character(numYears)) %>% 
+  body_replace_all_text(old_value = 'PERCMARGACRES',new_value = as.character(percMargAc)) %>% 
+  # cursor_reach(keyword='FIGUREHERE') %>% 
+  body_replace_all_text(old_value = 'FIGUREHERE',new_value = '') %>% 
+  body_add_gg(value=profitFig,width = 7.5,height=4.5)
+
+print(template,target = './newsletter2023/templatePg2_test.docx')
+# docx_update(input = './newsletter2023/templatePg2_test.docx')
 
 
 # Other --------------------------
