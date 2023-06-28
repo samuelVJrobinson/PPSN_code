@@ -10,7 +10,8 @@ library(tidyverse)
 library(scales)
 library(stars)
 library(ggpubr)
-library(officer)
+# library(officer)
+library(rmarkdown)
 
 # setwd("D:/geoData/SMSexport")
 
@@ -163,7 +164,7 @@ canProf %>% filter(CropType %in% top6crop) %>%
 
 # Report for growers ------------------------------------------------------
 
-temp <- canProf[[1]] #Single grower/year
+temp <- canProf[[1]] #Single grower/year - Clinton Monchuck
 
 #Table of summary yields
 yieldTable <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
@@ -198,18 +199,32 @@ percMargAc <- temp %>% filter(!is.na(Profit_ac)) %>%
   pull(NegProf) %>% mean(.)*100
 percMargAc <- ifelse(percMargAc<1,'less than 1',as.character(round(percMargAc)))
 
-read_docx('./newsletter2023/fullTemplate.docx') %>% 
-  body_replace_all_text(old_value = 'GROWERNAME',new_value = 'Clinton') %>% 
-  body_replace_all_text(old_value = 'NUMFIELDYEARS',new_value = as.character(numFieldYears)) %>% 
-  body_replace_all_text(old_value = 'NUMCROPS',new_value = as.character(numCropTypes)) %>% 
-  body_replace_all_text(old_value = 'NUMYEARS',new_value = as.character(numYears)) %>% 
-  body_replace_all_text(old_value = 'PERCMARGACRES',new_value = as.character(percMargAc)) %>% 
-  #Add table 
-  body_add_table(value=yieldTable,style = 'Normal Table' ) %>%
-  body_add_par(value = '') %>% 
-  # Add figure
-  body_add_gg(value=profitFig,width = 7.5,height=4,scale = 1.2) %>%
-  print(target = './newsletter2023/templateTest.docx')
+##Using officer
+# read_docx('./newsletter2023/fullTemplate.docx') %>% 
+#   body_replace_all_text(old_value = 'GROWERNAME',new_value = 'Clinton') %>% 
+#   body_replace_all_text(old_value = 'NUMFIELDYEARS',new_value = as.character(numFieldYears)) %>% 
+#   body_replace_all_text(old_value = 'NUMCROPS',new_value = as.character(numCropTypes)) %>% 
+#   body_replace_all_text(old_value = 'NUMYEARS',new_value = as.character(numYears)) %>% 
+#   body_replace_all_text(old_value = 'PERCMARGACRES',new_value = as.character(percMargAc)) %>% 
+#   #Add table 
+#   body_add_table(value=yieldTable,style = 'Normal Table' ) %>%
+#   body_add_par(value = '') %>% 
+#   # Add figure
+#   body_add_gg(value=profitFig,width = 7.5,height=4,scale = 1.2) %>%
+#   print(target = './newsletter2023/templateTest.docx')
+
+setwd('./newsletter2023/')
+render('grower-report.Rmd',
+       params = list(GROWERNAME='Clinton',
+                       NUMFIELDYEARS=as.character(numFieldYears),
+                       NUMCROPS=as.character(numCropTypes),
+                       NUMYEARS=as.character(numYears),
+                       PERCMARGACRES=as.character(percMargAc),
+                       TABLEHERE=as.data.frame(yieldTable),
+                       FIGUREHERE=profitFig),
+       # output_dir = './reports',
+       output_file = './reports/Clayton-Monchuk-test.pdf')
+
 
 ##All growers
 
@@ -271,9 +286,12 @@ for(i in 1:3){
     body_replace_all_text(old_value = 'PERCMARGACRES',new_value = as.character(percMargAc)) %>% 
     #Add table 
     body_add_table(value=yieldTable,
-                   # style = 'Table Grid',
-                   stylenames = prop_table(style='Table Grid'),
-                   alignment = c('r',rep('l',ncol(yieldTable)-1))) %>%
+                   # layout=table_layout('fixed'),
+                   # width=table_width(width=0.5,unit='pct'),
+                   style = 'Table Grid',
+                   # stylenames = prop_table(colwidths = table_colwidths(widths=0.5)),
+                   align_table = 'right',
+                   alignment = c('r',rep('l',ncol(yieldTable)-1)),first_row = FALSE) %>%
     body_add_par(value = '') %>% 
     # table_width(width = 1, unit = "pct") %>% 
     # Add figure

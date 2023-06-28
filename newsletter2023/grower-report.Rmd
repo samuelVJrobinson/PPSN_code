@@ -1,0 +1,74 @@
+---
+title: "PPSN Grower Report"
+geometry: margin=2cm
+fontsize: 12pt
+output: 
+  pdf_document: 
+    toc: false
+params:
+  GROWERNAME: "gname"
+  NUMFIELDYEARS: "nfy" 
+  NUMCROPS: "nc"
+  NUMYEARS: "ny"
+  PERCMARGACRES: "pmac"
+  TABLEHERE: "tabhere"
+  FIGUREHERE: "fighere"
+header-includes:
+  - \usepackage{multicol}
+  # - \usepackage{caption}
+  # - \captionsetup[table]{labelformat=empty}
+# output: 
+#   bookdown::pdf_document2:
+#     toc: false
+#     fig_caption: yes
+#     keep_tex: false
+
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+# library(kableExtra)
+library(dplyr); library(tidyr); library(ggplot2)
+
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+
+\begin{multicols}{2}
+
+Thank you `r params$GROWERNAME` for your contribution. This page has been prepared exclusively for you and has not been shared publicly.
+
+You supplied the project with:
+\begin{itemize}
+  \item `r params$NUMFIELDYEARS` field years of data
+  \item `r params$NUMCROPS` different crop types
+  \item `r params$NUMYEARS` years of data
+\end{itemize}
+
+Quick Facts about your data:
+\begin{itemize}
+  \item In 2022 `r params$PERCMARGACRES`\% of total acres were marginal (less than \$0 profit/acre)
+\end{itemize}
+
+\columnbreak
+
+\textbf{Average yield in bu\/ac for each crop}
+
+```{r yieldTab}
+
+params$TABLEHERE #%>% kable()
+
+```
+
+\textbf{Do these numbers look accurate? Let us know}
+
+\end{multicols}
+
+```{r profFigure, fig.height=4, fig.width=7.5}
+  
+  # print('FIGUREHERE')
+  params$FIGUREHERE
+
+```
+
+Thank you again for your support. We look forward to connecting with you when data collection resumes in the fall. Have a great summer!
