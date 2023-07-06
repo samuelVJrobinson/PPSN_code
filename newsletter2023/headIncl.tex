@@ -1,0 +1,41 @@
+% margin=1cm,top=5cm,headheight=3cm,headsep=1cm
+
+\AtBeginDocument{\let\maketitle\relax} %Suppress title page
+\usepackage{xcolor}
+\definecolor{ppsnBlue}{RGB}{88, 182, 192}
+\definecolor{ppsnTeal}{RGB}{117, 189, 167}
+
+\usepackage{setspace}
+\usepackage{multicol}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhead[R]{
+  \begin{tcolorbox}[colback=ppsnBlue,halign=right,width=8cm]
+  \LARGE
+  \color{white}
+  Grower Edition:\\Summer 2023 Update
+  \end{tcolorbox}
+}
+
+\renewcommand{\headrulewidth}{0pt}
+\usepackage{tcolorbox}
+\usepackage{everypage}
+% \usepackage{times}
+\usepackage{tikzpagenodes}
+\usetikzlibrary{calc}
+\pagenumbering{gobble}
+\AddEverypageHook{
+\begin{tikzpicture}[remember picture,overlay]
+  % Upper teal banner
+	\fill[ppsnTeal] (current page.north west) rectangle ([yshift=0.25cm] current page text area.north  -| current page.east);
+	% Lower teal banner
+	\fill[ppsnTeal] (current page.south west) rectangle ([yshift=1cm] current page text area.south -| current page.east);
+	% PPSN logo
+	\node[anchor=north west,rectangle,yshift=-1cm,xshift=0.5cm] at (current page.north west){\includegraphics[height=3cm]{ppsnLogo.png}};
+	% UCalgary logo
+	\node[anchor=south west,rectangle,xshift=0.5cm,yshift=0.5cm] at (current page.south west){\includegraphics[height=1.5cm]{uCalgaryLogo.png}};
+	% USask logo
+	\node[anchor=south east,rectangle,xshift=-0.5cm,yshift=0.5cm] at (current page.south east){\includegraphics[height=1.5cm]{uSaskLogo.png}};
+\end{tikzpicture}
+}

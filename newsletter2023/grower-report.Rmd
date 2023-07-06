@@ -1,11 +1,15 @@
 ---
-title: "PPSN Grower Report"
-geometry: margin=2cm
+documentclass: article
+geometry: margin=1cm,top=5cm,headheight=3cm,headsep=1cm
 fontsize: 12pt
 output: 
   pdf_document: 
     toc: false
+    keep_tex: false
+    includes:
+      in_header: headIncl.tex
 params:
+  FARMNAME: "fname"
   GROWERNAME: "gname"
   NUMFIELDYEARS: "nfy" 
   NUMCROPS: "nc"
@@ -13,26 +17,38 @@ params:
   PERCMARGACRES: "pmac"
   TABLEHERE: "tabhere"
   FIGUREHERE: "fighere"
-header-includes:
-  - \usepackage{multicol}
-  # - \usepackage{caption}
-  # - \captionsetup[table]{labelformat=empty}
-# output: 
-#   bookdown::pdf_document2:
-#     toc: false
-#     fig_caption: yes
-#     keep_tex: false
+title: ""
 
 ---
 
 ```{r setup, include=FALSE}
 library(knitr)
-# library(kableExtra)
-library(dplyr); library(tidyr); library(ggplot2)
+library(kableExtra)
 
 knitr::opts_chunk$set(echo = FALSE)
 
 ```
+
+
+<!-- Need to add a banner here, and possibly some logos. Some possible links that might help: -->
+<!-- https://tex.stackexchange.com/questions/297240/adding-an-image-to-a-header-in-latex -->
+<!-- https://bookdown.org/yihui/rmarkdown-cookbook/latex-logo.html -->
+<!-- https://tex.stackexchange.com/questions/276358/text-on-background-image-footer-and-header/276453 -->
+<!-- https://tex.stackexchange.com/questions/411212/set-header-background-and-text-color-using-fancyhdr -->
+
+<!-- Eventual goals: -->
+<!-- https://rfortherestofus.com/2021/11/multicolumn/ -->
+
+<!-- Begin multiple columns. For columns of different widths, might need vwcol or flowfram: https://tex.stackexchange.com/questions/89721/different-column-widths-using-multicol -->
+
+\color{ppsnBlue}
+\setstretch{0.9}	
+\LARGE
+PPSN Grower Report: Monchuck Farms Ltd.
+
+\normalsize
+\setstretch{1}
+\color{black}
 
 \begin{multicols}{2}
 
@@ -52,15 +68,30 @@ Quick Facts about your data:
 
 \columnbreak
 
-\textbf{Average yield in bu\/ac for each crop}
+\vspace*{0.5cm}
+
+\begin{centering}
+
+\textbf{Average yield in bushels per acre for each crop}
 
 ```{r yieldTab}
 
-params$TABLEHERE #%>% kable()
+smallCols <- which(nchar(colnames(params$TABLEHERE))>8)
+if(length(smallCols)==0) smallCols <- 0
+
+params$TABLEHERE %>% 
+  # rename_with(~gsub(' ','S',.x)) %>%
+  kable(format = 'latex') %>% 
+  column_spec(column=smallCols,width='1.2cm')
+  # kable_styling(full_width = FALSE)
+  # kable_styling(latex_options = 'scale_down')
 
 ```
 
 \textbf{Do these numbers look accurate? Let us know}
+
+\end{centering}
+
 
 \end{multicols}
 
@@ -71,4 +102,13 @@ params$TABLEHERE #%>% kable()
 
 ```
 
-Thank you again for your support. We look forward to connecting with you when data collection resumes in the fall. Have a great summer!
+\begin{tcolorbox}[colback=ppsnBlue,arc=0mm,halign=flush center,frame empty]
+  \color{white}
+  \large
+  Thank you again for your support. We look forward to connecting with you when data collection resumes in the fall. Have a great summer!
+\end{tcolorbox}
+
+
+```{r endCleanup}
+detach("package:kableExtra", unload = TRUE)
+```

@@ -29,8 +29,9 @@ rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory
 canProf <- vector('list',length(rDirs))
 names(canProf) <- basename(gsub('/rasters','',rDirs))
 
-{pb <- txtProgressBar(style=3)
-for(i in 1:length(rDirs)){
+i <- 1
+# {pb <- txtProgressBar(style=3)
+# for(i in 1:length(rDirs)){
   if(is.null(canProf[[i]])){
     ##Galpern:
     # canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
@@ -43,9 +44,9 @@ for(i in 1:length(rDirs)){
                                   excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
     
   }
-  setTxtProgressBar(pb,i/length(rDirs))
-}
-close(pb)}
+#   setTxtProgressBar(pb,i/length(rDirs))
+# }
+# close(pb)}
 
 # Single grower/year: Clinton Monchuk 2022 -----------------
 
@@ -174,10 +175,11 @@ yieldTable <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
   group_by(Year,CropType,.drop = FALSE) %>% 
   summarize(medYield=round(median(Yield_buAc,na.rm=TRUE),0)) %>% 
   mutate(medYield=ifelse(is.na(medYield),'-',as.character(medYield))) %>%
-  ungroup() %>% pivot_wider(names_from='CropType',values_from='medYield') %>%
-  arrange(desc(Year)) %>%   
-  slice(1:5) %>% #column_to_rownames('Year') %>% 
-  select(1:7)
+  ungroup() %>% mutate(Year=factor(Year,levels=rev(unique(Year)))) %>% 
+  pivot_wider(names_from='Year',values_from='medYield',names_sort = TRUE) %>%
+  arrange(desc(CropType)) %>%   
+  slice(1:pmin(7,nrow(.))) %>% #column_to_rownames('Year') %>% 
+  select(1:pmin(5,ncol(.)))
 
 #Figure of profit distributions
 profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
@@ -187,7 +189,8 @@ profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
   facet_wrap(~CropType)+
   geom_vline(xintercept = 0,col='red')+
   scale_y_continuous(labels = percent, name = "Percent of acres") +
-  labs(x='Profit ($/ac)',title='Grower: Clinton Monchuk, Year: 2022')+theme_bw()#+
+  labs(x='Profit ($/ac)',title='Grower: Clinton Monchuk, Year: 2022')+theme_bw()
+  # theme(text=element_text(family='Times New Roman'))
 
 #Other values to replace
 numFieldYears <- length(unique(temp$FieldYear))
@@ -199,31 +202,19 @@ percMargAc <- temp %>% filter(!is.na(Profit_ac)) %>%
   pull(NegProf) %>% mean(.)*100
 percMargAc <- ifelse(percMargAc<1,'less than 1',as.character(round(percMargAc)))
 
-##Using officer
-# read_docx('./newsletter2023/fullTemplate.docx') %>% 
-#   body_replace_all_text(old_value = 'GROWERNAME',new_value = 'Clinton') %>% 
-#   body_replace_all_text(old_value = 'NUMFIELDYEARS',new_value = as.character(numFieldYears)) %>% 
-#   body_replace_all_text(old_value = 'NUMCROPS',new_value = as.character(numCropTypes)) %>% 
-#   body_replace_all_text(old_value = 'NUMYEARS',new_value = as.character(numYears)) %>% 
-#   body_replace_all_text(old_value = 'PERCMARGACRES',new_value = as.character(percMargAc)) %>% 
-#   #Add table 
-#   body_add_table(value=yieldTable,style = 'Normal Table' ) %>%
-#   body_add_par(value = '') %>% 
-#   # Add figure
-#   body_add_gg(value=profitFig,width = 7.5,height=4,scale = 1.2) %>%
-#   print(target = './newsletter2023/templateTest.docx')
-
 setwd('./newsletter2023/')
-render('grower-report.Rmd',
-       params = list(GROWERNAME='Clinton',
-                       NUMFIELDYEARS=as.character(numFieldYears),
-                       NUMCROPS=as.character(numCropTypes),
-                       NUMYEARS=as.character(numYears),
-                       PERCMARGACRES=as.character(percMargAc),
-                       TABLEHERE=as.data.frame(yieldTable),
-                       FIGUREHERE=profitFig),
+
+#Parameters for the report
+parList <- list(FARMNAME = 'Monchuk Farms Ltd.',
+                GROWERNAME='Clinton',NUMFIELDYEARS=as.character(numFieldYears),
+                NUMCROPS=as.character(numCropTypes),NUMYEARS=as.character(numYears),
+                PERCMARGACRES=as.character(percMargAc),TABLEHERE=as.data.frame(yieldTable),
+                FIGUREHERE=profitFig)
+
+render('grower-report.Rmd',params = parList,
+       envir = new.env(),
        # output_dir = './reports',
-       output_file = './reports/Clayton-Monchuk-test.pdf')
+       output_file = './reports/Clayton-Monchuk-test.pdf',clean = TRUE)
 
 
 ##All growers
