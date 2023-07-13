@@ -29,9 +29,9 @@ rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory
 canProf <- vector('list',length(rDirs))
 names(canProf) <- basename(gsub('/rasters','',rDirs))
 
-i <- 1
-# {pb <- txtProgressBar(style=3)
-# for(i in 1:length(rDirs)){
+# i <- 1
+{pb <- txtProgressBar(style=3)
+for(i in 1:length(rDirs)){
   if(is.null(canProf[[i]])){
     ##Galpern:
     # canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
@@ -44,9 +44,9 @@ i <- 1
                                   excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
     
   }
-#   setTxtProgressBar(pb,i/length(rDirs))
-# }
-# close(pb)}
+  setTxtProgressBar(pb,i/length(rDirs))
+}
+close(pb)}
 
 # Single grower/year: Clinton Monchuk 2022 -----------------
 
@@ -178,8 +178,8 @@ yieldTable <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
   ungroup() %>% mutate(Year=factor(Year,levels=rev(unique(Year)))) %>% 
   pivot_wider(names_from='Year',values_from='medYield',names_sort = TRUE) %>%
   arrange(desc(CropType)) %>%   
-  slice(1:pmin(7,nrow(.))) %>% #column_to_rownames('Year') %>% 
-  select(1:pmin(5,ncol(.)))
+  slice(1:pmin(6,nrow(.))) %>% 
+  select(1:pmin(6,ncol(.))) %>% rename(`Crop Type`='CropType')
 
 #Figure of profit distributions
 profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
@@ -189,8 +189,7 @@ profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
   facet_wrap(~CropType)+
   geom_vline(xintercept = 0,col='red')+
   scale_y_continuous(labels = percent, name = "Percent of acres") +
-  labs(x='Profit ($/ac)',title='Grower: Clinton Monchuk, Year: 2022')+theme_bw()
-  # theme(text=element_text(family='Times New Roman'))
+  labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
 
 #Other values to replace
 numFieldYears <- length(unique(temp$FieldYear))
@@ -205,8 +204,8 @@ percMargAc <- ifelse(percMargAc<1,'less than 1',as.character(round(percMargAc)))
 setwd('./newsletter2023/')
 
 #Parameters for the report
-parList <- list(FARMNAME = 'Monchuk Farms Ltd.',
-                GROWERNAME='Clinton',NUMFIELDYEARS=as.character(numFieldYears),
+parList <- list(GROWERID='202201',
+                NUMFIELDYEARS=as.character(numFieldYears),
                 NUMCROPS=as.character(numCropTypes),NUMYEARS=as.character(numYears),
                 PERCMARGACRES=as.character(percMargAc),TABLEHERE=as.data.frame(yieldTable),
                 FIGUREHERE=profitFig)
@@ -220,14 +219,15 @@ render('grower-report.Rmd',params = parList,
 ##All growers
 
 #Load list of growers
-growerDat <- read.csv('./data/growerCSV.csv',strip.white = TRUE) %>% 
+growerDat <- # read.csv('./data/growerCSV.csv',strip.white = TRUE) %>% #Galpern
+  read.csv('../data/growerCSV.csv',strip.white = TRUE) %>% #Multivac
   rename_with(~gsub('.','',.x,fixed = TRUE)) %>% 
   select(GrowerID:BusinessName) %>% 
   #Amalgamate first and last name if businessname is blank
   mutate(BusinessName=ifelse(is.na(BusinessName)|BusinessName=='',paste(FirstName,LastName),BusinessName)) %>% 
   mutate(BusinessName=gsub('\\.$','',BusinessName)) #Remove trailing periods
 
-for(i in 1:3){
+for(i in 1:length(canProf)){
   gID <- sapply(str_split(names(canProf)[i],' '),first) %>% gsub('-.*','',.)
   gName <- growerDat$FirstName[which(growerDat$GrowerID==gID)]
   fName <- growerDat$BusinessName[which(growerDat$GrowerID==gID)]
@@ -242,22 +242,23 @@ for(i in 1:3){
     group_by(Year,CropType,.drop = FALSE) %>% 
     summarize(medYield=round(median(Yield_buAc,na.rm=TRUE),0),.groups = 'keep') %>% 
     mutate(medYield=ifelse(is.na(medYield),'-',as.character(medYield))) %>%
-    ungroup() %>% pivot_wider(names_from='CropType',values_from='medYield') %>%
-    arrange(desc(Year)) %>%   
-    slice(1:pmin(5,nrow(.))) %>% #column_to_rownames('Year') %>% 
-    select(1:pmin(7,ncol(.)))
+    ungroup() %>% mutate(Year=factor(Year,levels=rev(unique(Year)))) %>% 
+    pivot_wider(names_from='Year',values_from='medYield',names_sort = TRUE) %>%
+    arrange(desc(CropType)) %>%   
+    slice(1:pmin(6,nrow(.))) %>% 
+    select(1:pmin(6,ncol(.))) %>% rename(`Crop Type`='CropType')
   
   #Figure of profit distributions
-  profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% 
-    filter(Profit_ac<quantile(Profit_ac,0.99)) %>% #Removes top 1% yield outliers 
-    group_by(CropType) %>%
+  profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
     mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
     ggplot(aes(x=Profit_ac))+
     geom_density(fill='grey90')+
     facet_wrap(~CropType)+
     geom_vline(xintercept = 0,col='red')+
     scale_y_continuous(labels = percent, name = "Percent of acres") +
-    labs(x='Profit ($/ac)',title=paste0('Farm: ',fName,', Year: 2022'))+theme_bw()#+
+    labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+
+    theme_bw()+
+    coord_cartesian(xlim=c(NA,quantile(temp$Profit_ac,0.99,na.rm=TRUE))) #Show everything below 99th percentile
   
   #Other values to replace
   numFieldYears <- length(unique(temp$FieldYear))
@@ -269,25 +270,18 @@ for(i in 1:3){
     pull(NegProf) %>% mean(.)*100
   percMargAc <- ifelse(percMargAc<1,'less than 1',as.character(round(percMargAc)))
   
-  read_docx('./newsletter2023/fullTemplate.docx') %>% 
-    body_replace_all_text(old_value = 'GROWERNAME',new_value = gName) %>% 
-    body_replace_all_text(old_value = 'NUMFIELDYEARS',new_value = as.character(numFieldYears)) %>% 
-    body_replace_all_text(old_value = 'NUMCROPS',new_value = as.character(numCropTypes)) %>% 
-    body_replace_all_text(old_value = 'NUMYEARS',new_value = as.character(numYears)) %>% 
-    body_replace_all_text(old_value = 'PERCMARGACRES',new_value = as.character(percMargAc)) %>% 
-    #Add table 
-    body_add_table(value=yieldTable,
-                   # layout=table_layout('fixed'),
-                   # width=table_width(width=0.5,unit='pct'),
-                   style = 'Table Grid',
-                   # stylenames = prop_table(colwidths = table_colwidths(widths=0.5)),
-                   align_table = 'right',
-                   alignment = c('r',rep('l',ncol(yieldTable)-1)),first_row = FALSE) %>%
-    body_add_par(value = '') %>% 
-    # table_width(width = 1, unit = "pct") %>% 
-    # Add figure
-    body_add_gg(value=profitFig,width = 7.5,height=4,scale = 1) %>%
-    print(target = paste0('./newsletter2023/reports/',gID,' ',fName,' 2023 report.docx'))
+  #Parameters for the report
+  parList <- list(GROWERID=gID,
+                  NUMFIELDYEARS=as.character(numFieldYears),
+                  NUMCROPS=as.character(numCropTypes),NUMYEARS=as.character(numYears),
+                  PERCMARGACRES=as.character(percMargAc),TABLEHERE=as.data.frame(yieldTable),
+                  FIGUREHERE=profitFig)
+  
+  render('grower-report.Rmd',params = parList,
+         envir = new.env(),
+         # output_dir = './reports',
+         output_file = paste0('./reports/',gID,'-report.pdf'),clean = TRUE)
+  
 }
 
 

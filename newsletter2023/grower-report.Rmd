@@ -1,16 +1,16 @@
 ---
 documentclass: article
-geometry: margin=1cm,top=5cm,headheight=3cm,headsep=1cm
+geometry: margin=1cm,top=3.5cm,headheight=3.5cm,headsep=0cm
 fontsize: 12pt
 output: 
   pdf_document: 
+    latex_engine: xelatex
     toc: false
     keep_tex: false
     includes:
       in_header: headIncl.tex
 params:
-  FARMNAME: "fname"
-  GROWERNAME: "gname"
+  GROWERID: "gid"
   NUMFIELDYEARS: "nfy" 
   NUMCROPS: "nc"
   NUMYEARS: "ny"
@@ -41,10 +41,45 @@ knitr::opts_chunk$set(echo = FALSE)
 
 <!-- Begin multiple columns. For columns of different widths, might need vwcol or flowfram: https://tex.stackexchange.com/questions/89721/different-column-widths-using-multicol -->
 
+<!-- \begin{center} -->
+<!--   \makebox[\textwidth]{\includegraphics[width=\paperwidth]{PPSNnewsletter_Jul4.pdf}} -->
+<!-- \end{center} -->
+<!-- \noindent -->
+<!-- \includegraphics[width=\paperwidth]{./PPSNnewsletter_Jul4.pdf} -->
+\includepdf[pages=-]{PPSNnewsletter_Jul11.pdf}
+\pagebreak
+
+\begin{tikzpicture}[remember picture,overlay]
+<!-- Upper teal banner -->
+ 	\fill[ppsnTeal] (current page.north west) rectangle ([yshift=0cm] current page text area.north  -| current page.east);
+<!-- Lower teal banner -->
+ 	\fill[ppsnTeal] (current page.south west) rectangle ([yshift=0.9cm] current page text area.south -| current page.east);
+<!-- PPSN logo -->
+ 	\node[anchor=north west,rectangle,,yshift=-0.5cm,xshift=0.5cm] at (current page.north west){\includegraphics[height=2.3cm]{ppsnLogo.png}};
+<!-- Upper text -->
+ 	\node[draw=black,minimum height = 2.3cm,minimum width=8cm,anchor=north east,font=\color{white}\LARGE\linespread{1}\selectfont, fill=ppsnBlue,rectangle,yshift=-0.5cm,xshift=-0.5cm,align=right] at (current page.north east){
+  Grower Edition:\\ Summer 2023 Update
+ 	}
+ 	;
+<!-- USask logo -->
+ 	\node[anchor=south west,rectangle,xshift=0.5cm,yshift=0.25cm] at (current page.south west){\includegraphics[height=1.05cm]{uSaskLogo.png}};
+<!-- UCalgary logo -->
+ 	\node[anchor=south east,rectangle,xshift=-0.6cm,yshift=0.25cm] at (current page.south east){\includegraphics[height=1.1cm]{uCalgaryLogo.png}};
+ \end{tikzpicture}
+ 
+<!-- \fancyhead[R]{ -->
+<!--   \begin{tcolorbox}[colback=ppsnBlue,halign=right,width=8cm] -->
+<!--   \LARGE -->
+<!--   \color{white} -->
+<!--   Grower Edition:\\Summer 2023 Update -->
+<!--   \end{tcolorbox} -->
+<!-- } -->
+
+
 \color{ppsnBlue}
 \setstretch{0.9}	
 \LARGE
-PPSN Grower Report: Monchuck Farms Ltd.
+\textbf{PPSN Report: Grower ID `r params$GROWERID`}
 
 \normalsize
 \setstretch{1}
@@ -52,7 +87,7 @@ PPSN Grower Report: Monchuck Farms Ltd.
 
 \begin{multicols}{2}
 
-Thank you `r params$GROWERNAME` for your contribution. This page has been prepared exclusively for you and has not been shared publicly.
+Thank you for your contribution to this project! This page has been prepared exclusively for you and has not been shared publicly.
 
 You supplied the project with:
 \begin{itemize}
@@ -72,19 +107,16 @@ Quick Facts about your data:
 
 \begin{centering}
 
-\textbf{Average yield in bushels per acre for each crop}
+\textbf{Average yield for each crop type (bushels/acre)}
 
 ```{r yieldTab}
 
-smallCols <- which(nchar(colnames(params$TABLEHERE))>8)
+smallCols <- which(nchar(colnames(params$TABLEHERE))>9)
 if(length(smallCols)==0) smallCols <- 0
 
 params$TABLEHERE %>% 
-  # rename_with(~gsub(' ','S',.x)) %>%
   kable(format = 'latex') %>% 
   column_spec(column=smallCols,width='1.2cm')
-  # kable_styling(full_width = FALSE)
-  # kable_styling(latex_options = 'scale_down')
 
 ```
 
