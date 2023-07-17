@@ -79,7 +79,7 @@ knitr::opts_chunk$set(echo = FALSE)
 \color{ppsnBlue}
 \setstretch{0.9}	
 \LARGE
-\textbf{PPSN Report: Grower ID `r params$GROWERID`}
+\textbf{PPSN Preliminary Report: Grower ID `r params$GROWERID`}
 
 \normalsize
 \setstretch{1}

@@ -165,6 +165,8 @@ canProf %>% filter(CropType %in% top6crop) %>%
 
 # Report for growers ------------------------------------------------------
 
+setwd('./newsletter2023/')
+
 temp <- canProf[[1]] #Single grower/year - Clinton Monchuck
 
 #Table of summary yields
@@ -201,8 +203,6 @@ percMargAc <- temp %>% filter(!is.na(Profit_ac)) %>%
   pull(NegProf) %>% mean(.)*100
 percMargAc <- ifelse(percMargAc<1,'less than 1',as.character(round(percMargAc)))
 
-setwd('./newsletter2023/')
-
 #Parameters for the report
 parList <- list(GROWERID='202201',
                 NUMFIELDYEARS=as.character(numFieldYears),
@@ -228,25 +228,50 @@ growerDat <- # read.csv('./data/growerCSV.csv',strip.white = TRUE) %>% #Galpern
   mutate(BusinessName=gsub('\\.$','',BusinessName)) #Remove trailing periods
 
 for(i in 1:length(canProf)){
+  if(class(canProf[[i]])=='logical') next
   gID <- sapply(str_split(names(canProf)[i],' '),first) %>% gsub('-.*','',.)
   gName <- growerDat$FirstName[which(growerDat$GrowerID==gID)]
   fName <- growerDat$BusinessName[which(growerDat$GrowerID==gID)]
   
-  temp <- canProf[[i]] #Data for grower
+  #Data for grower i
+  temp <- canProf[[i]] %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
+    arrange(desc(Year)) %>% 
+    filter(Year %in% unique(Year)[1:pmin(5,length(unique(Year)))])
   
-  #Table of summary yields
-  yieldTable <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
+  #Table of summary yields 
+  topCrops <- temp %>% group_by(Field,Year) %>%  #All crops harvested
+    summarize(CropType=first(CropType),.groups = 'keep') %>% 
+    ungroup() %>% count(CropType) %>% arrange(desc(n))
+  
+  recentCrops <- temp %>% filter(Year==2022) %>% #Only 2022 crops with non-NA profit 
+    filter(!is.na(Profit_ac)) %>% group_by(Field,Year) %>% 
+    summarize(CropType=first(CropType),.groups = 'keep') %>% 
+    ungroup() %>% count(CropType) %>% arrange(desc(n))
+  
+  if(nrow(recentCrops)>=6){ #Table must have top-6 2022 crops, plus common non-2022 crops if <6 crops
+    topCrops <- recentCrops %>% slice(1:6)
+  } else if(nrow(recentCrops)<6){
+    topCrops <- topCrops %>% filter(!CropType %in% recentCrops$CropType) %>% 
+      slice(1:(6-nrow(recentCrops))) %>% 
+      bind_rows(recentCrops) %>% arrange(desc(n))
+  }
+  
+  yieldTable <- temp %>% 
     group_by(CropType) %>% mutate(N=n()) %>% arrange(desc(N)) %>% 
     ungroup() %>% 
-    mutate(CropType=factor(CropType,levels=unique(CropType))) %>% 
+    mutate(CropType=factor(CropType)) %>%
     group_by(Year,CropType,.drop = FALSE) %>% 
     summarize(medYield=round(median(Yield_buAc,na.rm=TRUE),0),.groups = 'keep') %>% 
+    ungroup() %>% 
+    mutate(Year=factor(Year,levels=rev(unique(Year)))) %>%
     mutate(medYield=ifelse(is.na(medYield),'-',as.character(medYield))) %>%
-    ungroup() %>% mutate(Year=factor(Year,levels=rev(unique(Year)))) %>% 
+    # droplevels() %>% 
     pivot_wider(names_from='Year',values_from='medYield',names_sort = TRUE) %>%
-    arrange(desc(CropType)) %>%   
-    slice(1:pmin(6,nrow(.))) %>% 
-    select(1:pmin(6,ncol(.))) %>% rename(`Crop Type`='CropType')
+    arrange(CropType) %>%   
+    # slice(1:pmin(6,nrow(.))) %>% 
+    filter(CropType %in% topCrops$CropType) %>% 
+    # select(1:pmin(6,ncol(.))) %>% 
+    rename(`Crop Type`='CropType')
   
   #Figure of profit distributions
   profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
@@ -261,11 +286,11 @@ for(i in 1:length(canProf)){
     coord_cartesian(xlim=c(NA,quantile(temp$Profit_ac,0.99,na.rm=TRUE))) #Show everything below 99th percentile
   
   #Other values to replace
-  numFieldYears <- length(unique(temp$FieldYear))
-  numCropTypes <- length(unique(temp$CropType))
-  numYears <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
+  numFieldYears <- length(unique(canProf[[i]]$FieldYear))
+  numCropTypes <- length(unique(canProf[[i]]$CropType))
+  numYears <- canProf[[i]] %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
     select(Year) %>% distinct() %>% nrow()
-  percMargAc <- temp %>% filter(!is.na(Profit_ac)) %>% 
+  percMargAc <- canProf[[i]] %>% filter(!is.na(Profit_ac)) %>% 
     mutate(NegProf=Profit_ac<0) %>% 
     pull(NegProf) %>% mean(.)*100
   percMargAc <- ifelse(percMargAc<1,'less than 1',as.character(round(percMargAc)))
