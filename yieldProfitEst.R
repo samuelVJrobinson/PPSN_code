@@ -215,7 +215,6 @@ render('grower-report.Rmd',params = parList,
        # output_dir = './reports',
        output_file = './reports/Clayton-Monchuk-test.pdf',clean = TRUE)
 
-
 ##All growers
 
 #Load list of growers
@@ -227,6 +226,11 @@ growerDat <- # read.csv('./data/growerCSV.csv',strip.white = TRUE) %>% #Galpern
   mutate(BusinessName=ifelse(is.na(BusinessName)|BusinessName=='',paste(FirstName,LastName),BusinessName)) %>% 
   mutate(BusinessName=gsub('\\.$','',BusinessName)) #Remove trailing periods
 
+# #Problem reports
+# 11: 202213 - canaryseed line has no info - not needed
+# 14: 202217 - issue with profit distribution maps
+# 18: 202221 - fababean line has no info - not needed
+
 for(i in 1:length(canProf)){
   if(class(canProf[[i]])=='logical') next
   gID <- sapply(str_split(names(canProf)[i],' '),first) %>% gsub('-.*','',.)
@@ -235,16 +239,21 @@ for(i in 1:length(canProf)){
   
   #Data for grower i
   temp <- canProf[[i]] %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
+    filter(!is.na(Yield_buAc)) %>% #Only non-NA yield
     arrange(desc(Year)) %>% 
     filter(Year %in% unique(Year)[1:pmin(5,length(unique(Year)))])
   
   #Table of summary yields 
+  
+  #Overall top crops
   topCrops <- temp %>% group_by(Field,Year) %>%  #All crops harvested
     summarize(CropType=first(CropType),.groups = 'keep') %>% 
     ungroup() %>% count(CropType) %>% arrange(desc(n))
   
-  recentCrops <- temp %>% filter(Year==2022) %>% #Only 2022 crops with non-NA profit 
-    filter(!is.na(Profit_ac)) %>% group_by(Field,Year) %>% 
+  #Only crops from 2022
+  recentCrops <- temp %>% 
+    filter(Year==2022,!is.na(Profit_ac)) %>% #Only 2022 crops with non-NA profit 
+    group_by(Field,Year) %>% 
     summarize(CropType=first(CropType),.groups = 'keep') %>% 
     ungroup() %>% count(CropType) %>% arrange(desc(n))
   
@@ -256,14 +265,11 @@ for(i in 1:length(canProf)){
       bind_rows(recentCrops) %>% arrange(desc(n))
   }
   
-  yieldTable <- temp %>% 
-    group_by(CropType) %>% mutate(N=n()) %>% arrange(desc(N)) %>% 
-    ungroup() %>% 
-    mutate(CropType=factor(CropType)) %>%
+  yieldTable <- temp %>% group_by(CropType) %>% mutate(N=n()) %>% arrange(desc(N)) %>% 
+    ungroup() %>% mutate(CropType=factor(CropType)) %>%
     group_by(Year,CropType,.drop = FALSE) %>% 
     summarize(medYield=round(median(Yield_buAc,na.rm=TRUE),0),.groups = 'keep') %>% 
-    ungroup() %>% 
-    mutate(Year=factor(Year,levels=rev(unique(Year)))) %>%
+    ungroup() %>% mutate(Year=factor(Year,levels=rev(unique(Year)))) %>%
     mutate(medYield=ifelse(is.na(medYield),'-',as.character(medYield))) %>%
     # droplevels() %>% 
     pivot_wider(names_from='Year',values_from='medYield',names_sort = TRUE) %>%
@@ -301,6 +307,9 @@ for(i in 1:length(canProf)){
                   NUMCROPS=as.character(numCropTypes),NUMYEARS=as.character(numYears),
                   PERCMARGACRES=as.character(percMargAc),TABLEHERE=as.data.frame(yieldTable),
                   FIGUREHERE=profitFig)
+  if(any(sapply(parList,function(x) any(is.na(x))))){
+    stop('NAs found in parList for grower ',gID)
+  }
   
   render('grower-report.Rmd',params = parList,
          envir = new.env(),
