@@ -54,7 +54,7 @@ makeBreaks <- function(x,b){
 # debugonce(makeBreaks)
 
 #Splits single csv into multiple csvs, separating field by names/years
-split_csv <- function(path,rmOld=FALSE){ 
+split_csv <- function(path,rmOld=FALSE,fastRead=TRUE){ 
   if(!file.exists(path)) stop('File ',path,' not found')
   
   #Get file/directory paths
@@ -64,7 +64,15 @@ split_csv <- function(path,rmOld=FALSE){
   
   #Read in csv
   print(paste0('Reading in ',filename))
-  dat <- read.csv(path)
+  
+  cClass <- c(rep('numeric',2),rep('character',7),rep('numeric',9))
+  if(fastRead){
+    dat <- data.table::fread(path,sep=",",colClasses = cClass)
+    dat <- data.frame(dat)  
+  } else {
+    dat <- read.csv(path,colClasses = cClass)
+  }
+  
   
   #Clean up column headers
   colnames(dat) <- gsub('^Date$','Date_ymd',colnames(dat))
@@ -96,15 +104,19 @@ split_csv <- function(path,rmOld=FALSE){
   
   #Get number of splits needed
   splits <- with(dat,unique(data.frame(year=Year,field=Field,
-                                       fy=paste(Field,Year,sep='_')#,
-                                       # crop=dat$Crop,variety=dat$Variety,useCropName=FALSE
-                                       ))) 
-  
+                                       fy=paste(Field,Year,sep='_')
+  ))) 
   if(nrow(splits)==1){
     print('Single field, year, and product. No splits needed')
-    write.csv(dat,paste0(dirname,splits$fy[1],'.csv'),row.names = FALSE)
+    if(fastRead){
+      data.table::fwrite(dat,paste0(dirname,splits$fy[1],'.csv'),sep=",",
+                         row.names = FALSE)
+    } else {
+      write.csv(dat,paste0(dirname,splits$fy[1],'.csv'),row.names = FALSE)
+    }
+    
   } else {
-    #SHOULD ONLY SPLIT INTO SINGLE FIELD-YEAR CSV
+    #SPLIT INTO SINGLE FIELD-YEAR CSV
     print(paste0('Splitting ',filename,' into ',nrow(splits),' files: ',
                  length(unique(splits$year)),' years, ',
                  length(unique(splits$field)),' fields'))
@@ -112,7 +124,12 @@ split_csv <- function(path,rmOld=FALSE){
     for(i in 1:nrow(splits)){
       chooseThese <- which(dat$Year==splits$year[i] & dat$Field==splits$field[i])
       tempDat <- dat[chooseThese,]
-      write.csv(tempDat,paste0(dirname,splits$fy[i],'.csv'),row.names = FALSE)
+      if(fastRead){
+        data.table::fwrite(tempDat,paste0(dirname,splits$fy[i],'.csv'),sep=",",
+                           row.names = FALSE)
+      } else {
+        write.csv(tempDat,paste0(dirname,splits$fy[i],'.csv'),row.names = FALSE)
+      }
       setTxtProgressBar(pb,i/nrow(splits))
     }
     close(pb)
