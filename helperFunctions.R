@@ -302,7 +302,7 @@ vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=
   return(ret)
 }
 
-clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPath=NULL,useVega=TRUE,keepFiltCols=FALSE,ncore=1){
+clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPath=NULL,useVega=TRUE,keepFiltCols=FALSE,ncore=1,fastRead=TRUE){
   library(tidyverse)
   library(sf)
   if(ncore>1){
@@ -316,7 +316,7 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   }
   
   #FUNCTIONS
- 
+  
   #Function to filter anything above certain quantiles
   QuantileFilter <- function(x,quant=0.99){ 
     l <- c((1-quant)/2,1-(1-quant)/2) #Symmetric quantiles
@@ -402,7 +402,14 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   if(!file.exists(path)) stop('File ',path,' not found')
   filename <- strsplit(path,'/')[[1]] 
   filename <- filename[length(filename)]
-  dat <- read.csv(path)
+  
+  cClass <- c(rep('numeric',2),rep('character',7),rep('numeric',9))
+  if(fastRead){
+    dat <- data.table::fread(path,sep=",",colClasses = cClass)
+    dat <- data.frame(dat)  
+  } else {
+    dat <- read.csv(path,colClasses = cClass)
+  }
   print(paste0('Read in ',basename(getwd()),' / ',filename,' : ',nrow(dat),' data points -------------------------'))
   print(paste0('Time: ', Sys.time()))
   
@@ -468,7 +475,7 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   #Removes data points above upper limit thresholds
   if(is.null(upperYield)){
     print(paste0('Using default upper yield limit'))
-
+    
     #These are rough estimates of "reasonable" maximum yield
     defaultLims <- data.frame(crop=c('wheat','barley','rye','canola','mustard','peas','flax','oats','lentil'),
                               upr=c(10.75,10.75,10.75,10,10,10,8,10,8),
@@ -628,48 +635,6 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   plot(dat[dispCols],pch=19,cex=0.05,pal=palFun,max.plot=11)
   dev.off()
   
-  # library(ggpubr) #Works, but takes a huge amount of time
-  # theme_set(theme_classic())
-  # 
-  # #Figure showing filtering pipeline
-  # filtLevels <- c('vegaFilt','tooLarge','qFilt','bFilt','speedFilt',
-  #                 'dSpeedFilt','posFilt','allFilt')
-  # filtLabs <- c('1. Spatial','2. Upper Limit','3. Yield Quantiles',
-  #               '4. Turning Angle','5. Speed','6. Speed Change',
-  #               '7. Position Change','8. All Filters')
-  # 
-  # # filtFigure <- 
-  # system.time({
-  #   p <- dat %>% 
-  #     # sample_n(size=30000) %>% #Reduces to 30000 points
-  #     select(vegaFilt:allFilt) %>% 
-  #     pivot_longer(vegaFilt:allFilt) %>% 
-  #     mutate(name=factor(name, levels = filtLevels ,labels= filtLabs)) %>% 
-  #     ggplot()+geom_sf(aes(col=value,alpha=value),size=0.05,show.legend = FALSE)+
-  #     facet_wrap(~name,nrow=2)+scale_colour_manual(values=c('red','black'))+
-  #     scale_alpha_manual(values=c(1,0.2))+
-  #     theme(axis.text=element_blank(),axis.ticks = element_blank())
-  #   ggsave(gsub('\\.csv$','.png',newpath),p,width=6,height=6,bg='white',scale = 1.5)
-  # })
-  # 
-  # #Showing raw vs filtered data
-  # uprLimPlot <- defaultLims$uprPlot[defaultLims$crop==croptype] #upper limit for plotted yield
-  # 
-  # filtDat <- dat %>% 
-  #   select(Yield_tha,Yield_tha_filt) %>% 
-  #   pivot_longer(c(Yield_tha,Yield_tha_filt)) %>% 
-  #   filter(!is.na(value)) %>% 
-  #   mutate(value=makeBreaks(value,b=1:uprLimPlot)) %>%  #Works for canola    
-  #   mutate(name=factor(name,labels=c(paste0('Raw Yield, N: ',nrow(dat)),paste0('Filtered Yield, N:',sum(!is.na(dat$Yield_tha_filt)))))) %>% 
-  #   ggplot()+geom_sf(aes(col=value),size=0.5,show.legend = TRUE)+
-  #   facet_wrap(~name,ncol=2)+
-  #   scale_colour_brewer(palette='RdBu',direction = 1)+  
-  #   theme(axis.text=element_blank(),axis.ticks = element_blank())+
-  #   labs(col='Yield\n(t/ha)')
-  # 
-  # p <- ggarrange(filtFigure,filtDat,nrow=2,ncol=1)
-  # ggsave(gsub('\\.csv$','.png',newpath),p,width=6,height=6,bg='white',scale = 1.5)
-  
   b <- Sys.time()
   
   print(paste0('Filtered ',sum(is.na(dat$Yield_tha_filt)),' of ',nrow(dat),' records (',
@@ -691,8 +656,13 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
     newpath <- path
     print(paste0('Overwriting ',filename))
   } 
+  
   print('Writing cleaned csv')
-  write.csv(dat,newpath,row.names = FALSE) 
+  if(fastRead){
+    data.table::fwrite(dat,newpath,sep=",",row.names = FALSE)
+  } else {
+    write.csv(dat,newpath,row.names = FALSE) 
+  }
   print(paste0('Finished. Time: ', Sys.time()))
 }
 
