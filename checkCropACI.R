@@ -18,7 +18,10 @@ for(i in 1:length(bFiles)){
 # d$y2022 <- NULL
 # d <- st_write(d,"D:\\geoData\\SMSexport\\Field Boundaries/202202 LAKELAND COLLEGE_poly.shp",append = FALSE)
 # cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries/202231 HILLSBORO FARMS_poly.shp")
-# debugonce(cropTypeACI)
+
+debugonce(cropTypeACI)
+cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries/202234 LEGUEE FARMS_poly.shp")  
+cropTypeACI(bFiles[3],addNewFields = "C:\\Users\\samuel.robinson\\Desktop\\202203 DAVE HOFER 2_poly.shp")  
 
 
 # Match crop type from polygons to yield data -----------------------------
