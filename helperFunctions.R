@@ -667,7 +667,18 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
 }
 
 #Get crop type info from ACI data, add as columns in field boundary shapefiles
-cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInventory"){
+cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInventory",
+                        addNewFields=NULL){
+  #Debugging
+  # #Creating new file from scratch - works
+  # boundPath <- "D:\\geoData\\SMSexport\\Field Boundaries/202234 LEGUEE FARMS_poly.shp"
+  # addNewFields <- NULL
+  # invDir <- "D:\\geoData\\Rasters\\croplandInventory"
+  
+  # #More complicated: adding new data to existing raster
+  # boundPath <- "D:\\geoData\\SMSexport\\Field Boundaries/202203 DAVE HOFER_poly.shp"
+  # addNewFields <- "C:\\Users\\samuel.robinson\\Desktop\\202203 DAVE HOFER 2_poly.shp"
+  # invDir <- "D:\\geoData\\Rasters\\croplandInventory"
   
   library(sf)
   library(stars)
@@ -684,110 +695,119 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
     st_make_valid() %>% #Fix geometry if needed
     filter(!st_is_empty(.)) %>% #Remove empty geometries
     group_by(Field) %>% 
-    suppressMessages(summarize(across(everything(),first),do_union = TRUE)) 
-    
-  #Names of year columns already present in the boundary data
-  yearCols <- names(fieldBoundaries)[grepl('^y20\\d{2}$',names(fieldBoundaries))] %>% 
-    gsub('^y','',.)
+    suppressMessages(summarize(across(everything(),first),do_union = TRUE))
   
   #Get ACI extent polygons, filter out non-overlapping polygons
   aciExtents <- st_read(file.path(invDir,'aciExtents.shp'),quiet = TRUE) %>% 
-    filter(sapply(st_intersects(.,st_transform(fieldBoundaries,st_crs(.))),length)>0) %>% 
-    filter(!year %in% yearCols)
+    filter(sapply(st_intersects(.,st_transform(fieldBoundaries,st_crs(.))),length)>0) #%>% 
   
-  if(nrow(aciExtents)==0){
-    print('All years of data already present. Exiting')
-  } else {
-    
-    #Transform boundaries to ACI extent crs
-    fieldBoundaries <- st_transform(fieldBoundaries,st_crs(aciExtents))
-    
-    #Read in ACI feature table
-    aciFT <- read.csv(file.path(invDir,'featureTableAAFC.csv')) %>% 
-      mutate(Label=ifelse(isCrop,Label,'NonCrop'))
-    
-    #Get separate raster for each year/province combination
-    aciRast <- lapply(aciExtents$path,function(x){
-      suppressWarnings(read_stars(x)) %>% #Reads raster - weird CRS for ACI data
-        # st_set_crs(NA_crs_) %>% st_set_crs(st_crs(aciExtents)) %>% #sets crs
-        # st_transform(st_crs(aciExtents)) %>% 
-        set_names(nm='Code') %>% 
-        mutate(Code=droplevels(factor(Code,level=aciFT$Code,labels = aciFT$Label)))
-    })
-    
-    #Function for extracting crop names and proportion cover
-    labFun <- function(x,N=5){
-      a <- sort(table(x),TRUE)
-      a <- 100*round(a/sum(a,na.rm = TRUE),3)
-      if(length(a)>N){
-        a <- a[1:N]
-      } else if(length(a)<N){
-        a <- c(a,rep(0,N-length(a)))
-        names(a)[names(a)==''] <- 'NA'
-      } 
-      paste(names(a),unname(a),sep='_',collapse = ',')
+  #Add columns to dataframe if not already present  
+  newCols <- paste0('y',unique(aciExtents$year))[!paste0('y',unique(aciExtents$year)) %in% colnames(fieldBoundaries)]
+  if(length(newCols)>0){
+    fieldBoundaries <- matrix(NA_character_,nrow=nrow(fieldBoundaries),ncol=length(newCols)) %>% 
+      data.frame() %>% setNames(newCols) %>% 
+      bind_cols(fieldBoundaries,.) %>% relocate(Field,starts_with('y'),geometry)  
+  }
+  
+  # Add new rows (fields) to dataframe if needed
+  if(!is.null(addNewFields)){
+    if(file.exists(addNewFields) && grep('.shp$',addNewFields)){
+      #Load in new field boundaries
+      fieldBoundaries <- read_sf(addNewFields) %>%
+        dplyr::select(matches('(Field|^y20\\d{2}$)')) %>% #Select only
+        mutate(Field=gsub('(/|_)','.',Field)) %>% #Replace forwardslash and underscore
+        st_make_valid() %>% #Fix geometry if needed
+        filter(!st_is_empty(.)) %>% #Remove empty geometries
+        group_by(Field) %>%
+        suppressMessages(summarize(across(everything(),first),do_union = TRUE)) %>% 
+        filter(!Field %in% fieldBoundaries$Field) %>% 
+        st_transform(crs=st_crs(fieldBoundaries)) %>% #Transform to fieldBoundary crs
+        bind_rows(fieldBoundaries,.)
+    } else stop('Additional file ',basename(addNewFields),' not found, or not a shapefile')
+  }
+  
+  #Transform boundaries to ACI extent crs
+  fieldBoundaries <- st_transform(fieldBoundaries,st_crs(aciExtents))
+  
+  #Read in ACI feature table
+  aciFT <- read.csv(file.path(invDir,'featureTableAAFC.csv')) %>% 
+    mutate(Label=ifelse(isCrop,Label,'NonCrop'))
+  
+  #Get separate raster for each year/province combination
+  aciRast <- lapply(aciExtents$path,function(x){
+    suppressWarnings(read_stars(x)) %>% #Reads raster - weird CRS for ACI data
+      # st_set_crs(NA_crs_) %>% st_set_crs(st_crs(aciExtents)) %>% #sets crs - takes too much time, easier to transform polygons
+      # st_transform(st_crs(aciExtents)) %>% 
+      set_names(nm='Code') %>% 
+      mutate(Code=droplevels(factor(Code,level=aciFT$Code,labels = aciFT$Label)))
+  })
+  
+  #Function for extracting crop names and proportion cover
+  labFun <- function(x,N=5){
+    a <- sort(table(x),TRUE)
+    a <- 100*round(a/sum(a,na.rm = TRUE),3)
+    if(length(a)>N){
+      a <- a[1:N]
+    } else if(length(a)<N){
+      a <- c(a,rep(0,N-length(a)))
+      names(a)[names(a)==''] <- 'NA'
+    } 
+    paste(names(a),unname(a),sep='_',collapse = ',')
+  }
+  
+  #Function for running labFun across different fields and years
+  getCover <- function(f,y,rasts=aciRast,extents=aciExtents,fBound=fieldBoundaries){
+    x <- st_geometry(fBound)[f] #Boundary for 
+    use <- which(extents$year==y & sapply(st_contains(extents,x),length)==1)
+    if(length(use)==0){
+      stop('Polygon does not overlap any raster.\nf=',f,', y=',y,'\n Polygon Field=',fBound$Field[f])
+    } 
+    ret <- sapply(use,function(u,xx){
+      xx <- st_transform(xx,st_crs(rasts[[u]]))
+      suppressWarnings(aggregate(rasts[[u]],xx,labFun,N=5)$Code) #Warnings from mismatched EPSG codes
+    },xx=x)
+    if(length(ret)>1){
+      ret <- ret[!grepl(paste0(rep('NA_0',5),collapse=','),ret)]
+      if(length(ret)==0){
+        stop('No info found in either raster. \nf=',f,', y=',y,'\n Polygon Field=',fBound$Field[f])
+      } else if(length(ret)>1) ret <- ret[1]
     }
-    
-    #Function for running labFun across different fields and years
-    getCover <- function(f,y,rasts=aciRast,extents=aciExtents,fBound=fieldBoundaries){
-      x <- st_geometry(fBound)[f]
-      use <- which(extents$year==y & sapply(st_contains(extents,x),length)==1)
-      if(length(use)==0){
-        stop('Polygon does not overlap any raster.\nf=',f,', y=',y,'\n Polygon Field=',fBound$Field[f])
-      } 
-      ret <- sapply(use,function(u){
-        x <- st_transform(x,st_crs(rasts[[u]]))
-        suppressWarnings(aggregate(rasts[[u]],x,labFun,N=5)$Code) #Warnings from mismatched EPSG codes
-        })
-      if(length(ret)>1){
-        ret <- ret[!grepl(paste0(rep('NA_0',5),collapse=','),ret)]
-        if(length(ret)==0){
-          stop('No info found in either raster. \nf=',f,', y=',y,'\n Polygon Field=',fBound$Field[f])
-        } else if(length(ret)>1) ret <- ret[1]
-      }
-      return(ret)
-    }
-    
-    #Storage list
-    years <- sort(unique(aciExtents$year))
-    # codeList <- rep(list(rep(NA_character_,nrow(fieldBoundaries))),length(years))
-    codeList <- vector('list',length(years))
-    names(codeList) <- paste0('y',years)
-    
-    print(paste0('Updating cover types: ',length(years),' years, ',nrow(fieldBoundaries),' field boundaries'))
+    return(ret)
+  }
+  
+  #Number of year/field values needing updates
+  nUpdates <- st_drop_geometry(fieldBoundaries) %>% select(starts_with('y')) %>% is.na() %>% sum
+  
+  if(nUpdates>0){
+    print(paste0('Updating cover types for ',nUpdates, ' field boundary/year combinations'))
     
     #Get first 5 cover types for each year, saves as a new column in boundary sf
     pb <- txtProgressBar(style=3)
     
+    yUpdates <- apply(select(st_drop_geometry(fieldBoundaries),starts_with('y')),2,function(x) sum(is.na(x)))
+    yUpdates <- yUpdates[yUpdates!=0]
+    
     #Iterates through years of data and gets cover data from each matched raster
     #Originally used only a single raster for each dataset, but some farms span multiple raster extents
-    for(i in 1:length(codeList)){ 
-      codeList[[i]] <- sapply(1:nrow(fieldBoundaries),getCover,y=years[i])
-      setTxtProgressBar(pb,i/length(codeList))
+    for(i in 1:length(yUpdates)){ #For each year with NAs
+      naRows <- which(is.na(pull(fieldBoundaries,names(yUpdates[i])))) #Which rows in this year are NA?
+      yNumber <- as.numeric(gsub('y','',names(yUpdates[i]))) #Year to use
+      
+      #Gets cover from each field boundary/year, and writes to NAs in dataframe
+      fieldBoundaries[naRows,names(yUpdates[i])] <- sapply(naRows,getCover,y=yNumber) 
+      setTxtProgressBar(pb,sum(yUpdates[1:i])/sum(yUpdates))
     }
     close(pb)
-    
-    # debugonce(getCover) #Tests
-    # getCover(f=1,y='2011')
-    
-    ##"All-at-once" approach, requires sorting out afterwards
-    # mapply(getCover,1:nrow(fieldBoundaries),rep(c('2010','2011'),each=nrow(fieldBoundaries)))
-    
-    #To do:
-    #Ideally this would use aggregate() once for each raster using only polygons that match extents
-    #Might avoid extra calls and drive reading? Seemed faster originally
-    
-    fieldBoundaries <- cbind(fieldBoundaries,codeList)
-    
-    #Check output
-    chk <- apply(st_drop_geometry(fieldBoundaries)[,-1],2,function(x) sum(x==paste0(rep('NA_0',5),collapse=',')))
-    if(any(chk)>1){
-      print('Some years had NA crop types:\n',chk)
-    }
-    
-    #Writes to boundary path
-    st_write(fieldBoundaries,boundPath,append = FALSE,quiet=TRUE)
   }
+  
+  #Check output
+  chk <- apply(st_drop_geometry(fieldBoundaries)[,-1],2,function(x) sum(x==paste0(rep('NA_0',5),collapse=',')|is.na(x)))
+  if(any(chk)>1){
+    print('Some years had NA crop types:\n',chk)
+  }
+  
+  #Writes to boundary path
+  st_write(fieldBoundaries,boundPath,append = FALSE,quiet=TRUE)
 }
 
 #Rasterize yield data - back-corrects for combine ID and harvest dates
