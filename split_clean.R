@@ -3,9 +3,9 @@ source("D:\\geoData\\SMSexport\\helperFunctions.R")
 
 # Basic operations - unzip and process csv ----------------------------------------
 
-dirPath <- "D:\\geoData\\SMSexport\\202212 202 AGVENTURES/"
+unzipAll('D:\\geoData\\YieldStorageRaw\\202256 ABCO Farms/',rmOld = TRUE)
 
-unzipAll('D:\\geoData\\YieldStorageRaw\\202242 Egersund Farms/Yield Files/Egersund 2022 yield files/',rmOld = TRUE)
+dirPath <- "D:\\geoData\\SMSexport\\202231 HILLSBORO FARMS/"
 
 rename_csv(dirPath)
 # debugonce(rename_csv)
@@ -29,7 +29,7 @@ setwd(dirPath)
 for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
   p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
   p2 <- gsub('csv$','png',p1) #png writing path
-  # split_csv(l,FALSE) #Split files
+  split_csv(l,FALSE) #Split files
   if(file.exists(p1)){
     print(paste0(gsub('./','',l),' already processed. Skipping.'))
   } else {
@@ -46,6 +46,7 @@ for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
 dirs <- dir('D:\\geoData\\SMSexport\\','.*2022[0-9]{2}\\s',include.dirs = TRUE,full.names = TRUE)
 for(d in dirs){
   setwd(d)
+  try({rename_csv('.')},silent = TRUE)
   for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
     p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
     p2 <- gsub('csv$','png',p1) #png writing path
@@ -72,6 +73,12 @@ yDirs <- list.dirs('.',full.names = TRUE) #Yield directory
 yDirs <- yDirs[grepl('clean$',yDirs)]
 rDirs <- gsub('clean$','rasters',yDirs) #Raster directory
 
+# debugonce(rasterizeYield)
+# rasterizeYield(yieldDir = yDirs[3],
+#                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
+#                # fieldFiltChar = "2022.csv$",
+#                rastDir = rDirs[i], overwrite = FALSE)  
+
 for(i in 1:length(yDirs)){
   try({
     rasterizeYield(yieldDir = yDirs[i],
@@ -82,17 +89,16 @@ for(i in 1:length(yDirs)){
   outFile =gsub('/rasters','_ERROR.txt',rDirs[1]))
   gc()
 }
-# 
-# debugonce(rasterizeYield)
-# # rasterizeYield(yieldDir = "./202224 LEWIS FARMS/clean",
-# #                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
-# #                fieldFiltChar = "2022.csv$",
-# #                rastDir = "./202224 LEWIS FARMS/rasters", overwrite = FALSE)
-# 
-# rasterizeYield(yieldDir = "./202201 CLINTON MONCHUK/clean",
-#                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
-#                fieldFiltChar = "2022.csv$",
-#                rastDir = "./202201 CLINTON MONCHUK/rasters", overwrite = FALSE)
+ 
+
+
+##Single dir
+debugonce(rasterizeYield)
+rasterizeYield(yieldDir = "./202231 HILLSBORO FARMS/clean/",
+               boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
+               # fieldFiltChar = "2022.csv$",
+               rastDir = "./202231 HILLSBORO FARMS/rasters", overwrite = FALSE)
+ 
 
 
 # Other things ------------------------------------------------------------
