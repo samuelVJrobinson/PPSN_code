@@ -818,14 +818,6 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
   if(is.null(rastDir)) rastDir <- gsub(basename(yieldDir),'rasters',yieldDir)
   if(!dir.exists(rastDir)) dir.create(rastDir)
   
-  library(tidyverse)
-  library(sf)
-  library(stars)
-  library(mgcv)
-  library(parallel)
-  cl <- makeCluster(nClust) #Parallel processing cluster. 
-  on.exit({stopCluster(cl); rm(list=ls());gc()}) #Cleanup on exit
-  
   filePaths <- list.files(yieldDir,pattern="*\\.csv$",full.names = TRUE) #Get all csv paths
   if(length(filePaths)==0) stop('No files found in listed directory')
   if(!is.null(fieldFiltChar)){ #Select only fields matching listed regexp
@@ -839,83 +831,100 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
   bPath <- boundPaths[grepl(fID,boundPaths)] #Path for boundary shape files
   if(length(fID)!=1 | length(bPath)!=1) stop('Error in farmer ID matching:\nfID: ',fID,'\nboundary path: ',bPath)
   
-  boundPoly <- read_sf(bPath) #Boundary polygons for all fields
-  
-  print(paste('Rasterizing files in',yieldDir,'------------------------'))
-  print(paste('Started at',Sys.time()))
-  for(path in filePaths){
-    fieldRastPath <- file.path(rastDir,gsub('.csv$','.tif',basename(path))) #Raster path
+  #Check if folder has already been processed
+  if(!any(!file.exists(file.path(rastDir,gsub('.csv$','.tif',basename(filePaths)))))){
+    print(paste0('All files in ',yieldDir,' already rasterized.'))
+  } else {
+    suppressMessages({
+      library(tidyverse)
+      library(sf)
+      library(stars)
+      library(mgcv)
+      library(parallel)
+    })
     
-    if(file.exists(fieldRastPath) & !overwrite){
-      print(paste0(basename(fieldRastPath),' already converted to raster'))
-    } else {
-      fieldName <- gsub('\\_20[0-9]{2}.csv$','',basename(path)) #Get field name from csv path
-      fieldBoundPoly <- boundPoly %>% filter(Field==fieldName) #Boundary around individual field
-      
-      #Read in data and turn into an sf object
-      dat <- data.table::fread(path,sep=",") %>% data.frame() %>% 
-        mutate(allFilt = tooLarge & vegaFilt & qFilt & bFilt & speedFilt & dSpeedFilt & posFilt) %>% 
-        st_as_sf(coords=c('Longitude','Latitude'),remove=FALSE) %>% #Add spatial feature info
-        st_set_crs(4326) %>% #Lat-lon format
-        st_transform(st_crs(boundPoly)) %>%
-        filter(allFilt) %>% 
-        filter(sapply(st_within(.,fieldBoundPoly),length)==1) %>% 
-        bind_cols(st_coordinates(.)) %>% #Get x,y coords in meters
-        mutate(across(c(X,Y),~.x-mean(.x))) %>%  #Center coordinates
-        mutate(across(c(Grower:CombineID),factor)) %>% 
-        mutate(Date_Combine=factor(paste(Date_ymd,CombineID,sep='_')))
-      
-      if(length(unique(dat$Date_Combine))>1){ #If multiple combines/dates are present
-        #Fit combine-and-date yield model, with spatial smoother s(X,Y), then refit with autocorrelation term
-        m1 <- bam(Yield_tha ~ Date_Combine + s(X,Y,k=200) + 0,data=dat,cluster=cl) #No rho term
-        ar1 <- acf(resid(m1),type = 'partial',plot=FALSE)$acf[1,,] #Autocorrelation term
-        m1 <- bam(Yield_tha ~ Date_Combine  + s(X,Y,k=200) + 0,data=dat,cluster=cl,rho=ar1) #Refit with rho
-        
-        #Back-correct estimated combine effects using AR1 model
-        modMat <- model.matrix(~ Date_Combine + 0,data=dat) #Model matrix
-        coefs <- coef(m1)[!grepl('s\\(',names(coef(m1)))] #Get coefficients
-        
-        #Adjusted yield: subtracts combine/date, then adds back in an "average" combine/date effect
-        dat$Yield_tha <- dat$Yield_tha - (modMat %*% coefs)[,1] + mean(modMat %*% coefs) 
-        dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero 
-      }
-      
-      #Aggregate data and write to raster
-      rastTemplate <- st_as_stars(st_bbox(fieldBoundPoly), dx = 20, dy = 20, values=0)
-      grd <- st_as_sf(rastTemplate) #Create grid (20x20 m cell size)
-      #1st and 3rd quartile functions
-      q1 <- function(x,na.rm=TRUE) quantile(x,0.25,na.rm)
-      q3 <- function(x,na.rm=TRUE) quantile(x,0.75,na.rm)
-      funs <- c('mean','sd','min','q1','median','q3','max') #Summary functions to apply
-      agg <- lapply(funs,function(f){
-        aggregate(select(dat,Yield_tha), grd, FUN = eval(parse(text=f)), na.rm=TRUE) %>% #Aggregate to grid
-          st_rasterize(template = rastTemplate) #Convert to stars object  
-      }) %>% set_names(nm=funs) %>% do.call('c',.) %>% merge()
-
-      # #Earlier version
-      # rastTemplate <- st_as_stars(st_bbox(fieldBoundPoly), dx = 20, dy = 20, values=0)
-      # grd <- st_as_sf(rastTemplate) #Create grid (20x20 m cell size)
-      # agg <- aggregate(select(dat,Yield_tha), grd, FUN = median, na.rm=TRUE) %>% #Aggregate to grid, using median function
-      #   st_rasterize(template = rastTemplate) #Convert to stars object
-      
-      # #Write crop name into stars column name - doesn't work with tif objects
-      # colnum <- which(grepl(gsub('(.csv|.*_)','',basename(path)),names(fieldBoundPoly))) #Year column to look in
-      # if(length(colnum)!=1) stop('Singular year not found:\n',basename(path))
-      # cTypes <- pull(fieldBoundPoly,colnum) #CropTypes from ACI
-      # names(agg) <- paste(names(agg),cTypes,sep=',') #Append croptypes to name
-      
-      write_stars(agg,fieldRastPath) #Write to geoTiff
-      print(paste('Converted',basename(fieldRastPath)))
+    boundPoly <- read_sf(bPath) #Boundary polygons for all fields
+    
+    fieldsFound <- gsub('\\_20[0-9]{2}.csv$','',basename(filePaths)) %in% boundPoly$Field
+    if(any(!fieldsFound)){
+      stop('No boundaries found for fields:\n',paste0(basename(filePaths)[!fieldsFound],collapse=', '))
     }
+    
+    print(paste('Rasterizing files in',yieldDir,'------------------------'))
+    print(paste('Started at',Sys.time()))
+    
+    cl <- makeCluster(nClust) #Parallel processing cluster. 
+    on.exit({stopCluster(cl); rm(list=ls());gc()}) #Cleanup on exit
+    
+    for(path in filePaths){
+      fieldRastPath <- file.path(rastDir,gsub('.csv$','.tif',basename(path))) #Raster path
+      
+      if(file.exists(fieldRastPath) & !overwrite){
+        print(paste0(basename(fieldRastPath),' already converted to raster'))
+      } else {
+        fieldName <- gsub('\\_20[0-9]{2}.csv$','',basename(path)) #Get field name from csv path
+        fieldBoundPoly <- boundPoly %>% filter(Field==fieldName) #Boundary around individual field
+        if(nrow(fieldBoundPoly)==0) stop('No boundary found for Field ',fieldName)
+        
+        #Read in data and turn into an sf object
+        dat <- data.table::fread(path,sep=",") %>% data.frame() %>% #Faster than read.csv
+          mutate(allFilt = tooLarge & vegaFilt & qFilt & bFilt & speedFilt & dSpeedFilt & posFilt) %>% 
+          st_as_sf(coords=c('Longitude','Latitude'),remove=FALSE) %>% #Add spatial feature info
+          st_set_crs(4326) %>% #Lat-lon format
+          st_transform(st_crs(boundPoly)) %>%
+          filter(allFilt) %>% 
+          filter(sapply(st_within(.,fieldBoundPoly),length)==1) %>% 
+          bind_cols(st_coordinates(.)) %>% #Get x,y coords in meters
+          mutate(across(c(X,Y),~.x-mean(.x))) %>%  #Center coordinates
+          mutate(across(c(Grower:CombineID),factor)) %>% 
+          mutate(Date_Combine=factor(paste(Date_ymd,CombineID,sep='_')))
+        
+        if(length(unique(dat$Date_Combine))>1){ #If multiple combines/dates are present
+          
+          errPath <- gsub('.tif','_ERROR.txt',fieldRastPath) #Error path
+          
+          #Fit combine-and-date yield model, with spatial smoother s(X,Y), then refit with autocorrelation term
+          try({
+            m1 <- bam(Yield_tha ~ Date_Combine + s(X,Y,k=200) + 0,data=dat,cluster=cl) #No rho term
+            ar1 <- acf(resid(m1),type = 'partial',plot=FALSE)$acf[1,,] #Autocorrelation term
+            m1 <- bam(Yield_tha ~ Date_Combine  + s(X,Y,k=200) + 0,data=dat,cluster=cl,rho=ar1) #Refit with rho
+            
+            #Back-correct estimated combine effects using AR1 model
+            modMat <- model.matrix(~ Date_Combine + 0,data=dat) #Model matrix
+            coefs <- coef(m1)[!grepl('s\\(',names(coef(m1)))] #Get coefficients
+            
+            #Adjusted yield: subtracts combine/date, then adds back in an "average" combine/date effect
+            dat$Yield_tha <- dat$Yield_tha - (modMat %*% coefs)[,1] + mean(modMat %*% coefs) 
+            dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero 
+          },outFile = errPath)
+        }
+        
+        #If an error occurred during smoothing
+        if(file.exists(errPath)){
+          print(paste0('Error occurred during smoothing procedure for field ',
+                       fieldName,'. Data (n = ',nrow(dat),') may be too sparse.'))
+          next()
+        }
+        
+        #Aggregate data and write to raster
+        rastTemplate <- st_as_stars(st_bbox(fieldBoundPoly), dx = 20, dy = 20, values=0)
+        grd <- st_as_sf(rastTemplate) #Create grid (20x20 m cell size)
+        #1st and 3rd quartile functions
+        q1 <- function(x,na.rm=TRUE) quantile(x,0.25,na.rm)
+        q3 <- function(x,na.rm=TRUE) quantile(x,0.75,na.rm)
+        funs <- c('mean','sd','min','q1','median','q3','max') #Summary functions to apply
+        agg <- lapply(funs,function(f){
+          aggregate(select(dat,Yield_tha), grd, FUN = eval(parse(text=f)), na.rm=TRUE) %>% #Aggregate to grid
+            st_rasterize(template = rastTemplate) #Convert to stars object  
+        }) %>% set_names(nm=funs) %>% do.call('c',.) %>% merge()
+        
+        write_stars(agg,fieldRastPath) #Write to geoTiff
+        print(paste('Converted',basename(fieldRastPath)))
+      }
+    }
+    print(paste('Finished at',Sys.time()))
   }
-  print(paste('Finished at',Sys.time()))
 }
-
-# rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202201 CLINTON MONCHUK\\clean",
-#                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
-#                fieldFiltChar = "2022.csv$",
-#                rastDir = "D:\\geoData\\SMSexport\\202201 CLINTON MONCHUK\\rasters",
-#                overwrite = FALSE)
 
 #Function to calculate profitability for rasterized yield data. 
 #Finds all yield rasters in rastDir, matches to soil/province polygons, field boundaries, and crop prices
