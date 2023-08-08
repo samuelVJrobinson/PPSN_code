@@ -14,7 +14,7 @@ unzipAll <- function(d,rmOld=FALSE){
     }, error = function(e){
       message('Error occurred: ')
       message(e)
-      })
+    })
     
     setTxtProgressBar(pb,i/length(z))
   }
@@ -47,7 +47,7 @@ makeBreaks <- function(x,b){
   } else stop('Check breaks')
   return(ret)
 }
- 
+
 # makeBreaks(x=runif(100,0,5),b=c(0.5))
 # makeBreaks(x=runif(100,0,5),b=c(1,2,3))
 # makeBreaks(x=runif(100,0,5),b=c(0.5,1,1.5))
@@ -191,8 +191,8 @@ merge_csv <- function(path1,path2,newpath,rmOld=FALSE){
 
 #Function to iterate through field names/years, and choose crops/varieties interactively
 fix_names <- function(filedir){
-  #Debugging
-  filedir <- "D://geoData//SMSexport//202201 Clayton Monchuk"
+  # #Debugging
+  # filedir <- "D://geoData//SMSexport//202201 Clayton Monchuk"
   
   paths <- dir(filedir,pattern = '*.csv',full.names = TRUE)
   
@@ -926,13 +926,18 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
   }
 }
 
+# rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202201 CLINTON MONCHUK\\clean",
+#                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
+#                fieldFiltChar = "2022.csv$",
+#                rastDir = "D:\\geoData\\SMSexport\\202201 CLINTON MONCHUK\\rasters",
+#                overwrite = FALSE)
+
 #Function to calculate profitability for rasterized yield data. 
 #Finds all yield rasters in rastDir, matches to soil/province polygons, field boundaries, and crop prices
 profEstimates <- function(rastDir = NULL,
                           soilMapPath = "D:\\geoData\\Shapefiles\\Soil Layers\\PRV_SZ_PDQ_v6.shp",
                           boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
                           cropPrices = "D:\\geoData\\SMSexport\\cropPricesCSV.csv",
-                          bulkDens = "D:\\geoData\\SMSexport\\cropBulkDensity.csv",
                           # retDat = FALSE, #Return dataframe or plot?
                           includeYield = FALSE, #Include yield data along with profit?
                           useAcres = FALSE, #Convert yield to bu/acre
@@ -994,8 +999,8 @@ profEstimates <- function(rastDir = NULL,
     filter(Year %in% unique(rastPaths$Year)) #Strip out unused years
   
   #Get econ information for each region and time
-  priceDat <- read.csv(cropPrices,strip.white = TRUE) %>% select(-CropPrice_bu) %>% 
-    mutate(across(c('AvgCost_ha','CropPrice_t','Bu_t'),as.numeric))
+  priceDat <- read.csv(cropPrices,strip.white = TRUE) %>% 
+    mutate(across(c('AvgCost_ha','CropPrice_t','Bu_t','CropPrice_bu'),as.numeric))
   
   #Join econ data to boundary polygons
   bPoly <- bPoly %>% 
@@ -1021,21 +1026,6 @@ profEstimates <- function(rastDir = NULL,
       rastPaths <- rastPaths %>% filter(SourceKnown=='Known')
     }
   } 
-  
-  if(any(is.na(rastPaths$Bu_t))){
-    warning('Bulk density not listed for some crops. Using average bushels/tonne')
-    if(!file.exists(bulkDens)) stop('Bulk density csv file not found')
-    bd <- read.csv(bulkDens) %>% rename('Bu_t2'='Bu_t')
-    missingBDcrops <- rastPaths$CropType[is.na(rastPaths$Bu_t)] 
-    if(any(!missingBDcrops %in% bd$CropType)){
-      badCrops <- paste0(missingBDcrops[!missingBDcrops %in% bd$CropType],collapse=', ')
-      warning(paste0('Some crop types were not found in bulk density csv:\n',badCrops
-                     ))
-    }
-    rastPaths <- left_join(rastPaths,bd,by='CropType') %>% 
-      mutate(Bu_t=ifelse(is.na(Bu_t),Bu_t2,Bu_t)) %>% 
-      select(-Bu_t2)
-  }
   
   if(any(!complete.cases(st_drop_geometry(rastPaths)))){ #Any other missing values
     badDat <- st_drop_geometry(rastPaths)[!complete.cases(st_drop_geometry(rastPaths)),-1]
