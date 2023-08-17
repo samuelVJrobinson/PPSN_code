@@ -1,8 +1,4 @@
 # Basic estimates of profitability using rasterized yield data
-# source("D:\\geoData\\SMSexport\\helperFunctions.R")
-
-source("./helperFunctions.R")
-
 #Top 10 crop types from 2022:
 # Canola, Spring Wheat, Peas, Barley, Lentils, Soybeans, Oats, Flaxseed, Corn, Chickpeas
 library(sf)
@@ -17,7 +13,6 @@ library(rmarkdown)
 ha2ac <- 2.47105 #Acres per hectare
 
 #Get data from rasters
-
 if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
   setwd('D:/geoData/SMSexport/PPSN_code/')
   yDirs <- list.dirs('D:/geoData/SMSexport',full.names = TRUE) #Yield directory
@@ -27,7 +22,7 @@ if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
   rDirs <- list.dirs("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters")
   rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory  
 }
-
+source("./helperFunctions.R")
 canProf <- vector('list',length(rDirs))
 names(canProf) <- basename(gsub('/rasters','',rDirs))
 
@@ -36,7 +31,8 @@ names(canProf) <- basename(gsub('/rasters','',rDirs))
 for(i in 1:length(rDirs)){
   if(is.null(canProf[[i]])){
     if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
-      canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
+      debugonce(profEstimates)
+      canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE) 
     } else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
       canProf[[i]] <- profEstimates(rDirs[i],
                                     soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
@@ -48,7 +44,7 @@ for(i in 1:length(rDirs)){
   setTxtProgressBar(pb,i/length(rDirs))
 }
 close(pb)}
-# save('canProf',file='canProf.Rdata')
+save('canProf',file='canProf.Rdata')
 # load('./newsletter2023/canProf.Rdata')
 
 # Distribution of crop types and avg yield per year ----------------

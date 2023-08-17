@@ -946,7 +946,7 @@ profEstimates <- function(rastDir = NULL,
                           # retDat = FALSE, #Return dataframe or plot?
                           includeYield = FALSE, #Include yield data along with profit?
                           useAcres = FALSE, #Convert yield to bu/acre - requires bulkDens.csv if not listed in cropPrices
-                          bulkDens = "D:\\geoData\\SMSexpor\\cropBulkDensity.csv",
+                          bulkDens = "D:\\geoData\\SMSexport\\PPSN_code\\data\\cropBulkDensity.csv",
                           excludeMissing = FALSE){ #Warn about missing econ data, or exclude?
   
   # #Debugging
