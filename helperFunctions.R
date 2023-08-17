@@ -91,12 +91,15 @@ split_csv <- function(path,rmOld=FALSE,fastRead=TRUE){
   
   if(any(colnames(dat)!=cNames)) stop('Column names incorrect. Check format')
   
-  if(any(grepl('_',unique(dat$Field)))){
+  if(any(grepl('_',unique(dat$Field),fixed=TRUE))){
     print(paste0('Underscore replaced in field name: ',unique(dat$Field)))
-    dat$Field <- gsub('_','.',dat$Field) 
-  } else if(any(grepl('/',unique(dat$Field)))){
+    dat$Field <- gsub('_','.',dat$Field,fixed=TRUE) 
+  } else if(any(grepl('/',unique(dat$Field),fixed=TRUE))){
     print(paste0('Forwardslash replaced in field name: ',unique(dat$Field)))
-    dat$Field <- gsub('/','.',dat$Field) 
+    dat$Field <- gsub('/','.',dat$Field,fixed=TRUE) 
+  } else if(any(grepl('|',unique(dat$Field),fixed = TRUE))){
+    print(paste0('Bar replaced in field name: ',unique(dat$Field)))
+    dat$Field <- gsub('|','.',dat$Field,fixed = TRUE) 
   }
   
   # Fix Spring/Winter Wheat/Barley naming
@@ -164,6 +167,10 @@ rename_csv <- function(dirname){
     file.rename(fullpath[f],gsub(files[f],newnames[f],fullpath[f],fixed = TRUE)) #Rename files
   }
   print('Renamed default SMS names')
+  badnames <- grepl("(\\||\\,|\\/)",newnames)
+  if(any(badnames)){
+    warning(paste0('Some files had (possibly) bad filenames:',newnames,collapse='\n'))
+  } 
 }
 
 #Merges two csvs into a single one - used for cleanup
@@ -483,12 +490,6 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
     
     cropTypes <- unique(dat$Crop) #Unique crop types
     
-    # #Row indices for crop types
-    # chooseCrops <- sapply(defaultLims$crop,function(x){
-    #   a <- which(grepl(x,cropTypes,ignore.case = TRUE))
-    #   if(length(a)==0) return(0) else return(a)
-    # }, simplify = TRUE)
-    
     #Matrix matching listed crop types (rows) to ones from data (columns)
     chooseCrops <- do.call('rbind',lapply(defaultLims$crop,function(x) grepl(x,cropTypes,ignore.case = TRUE)))
     colnames(chooseCrops) <- cropTypes
@@ -598,9 +599,11 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   if(0.5<propFilt){
     filtCol <-  st_drop_geometry(dat) %>% #Proportion data dropped from each category
       select(inBoundary:allFilt) %>% as.matrix() %>%
-      apply(.,2,function(x) round(mean(!x),2))
-    
-    stop('More than 50% of data have been filtered. Check filtering categories:\n',filtCol)
+      apply(.,2,function(x) round(mean(!x),2)) 
+    msg <- paste('More than 50% of data have been filtered. Check filtering categories:\n',
+                 paste(capture.output(print(filtCol)),collapse = "\n"))
+    sapply(strsplit(msg,'\n')[[1]],print)
+    stop(msg)
   } else if(0.3<propFilt) {
     warning('More than 30% of data have been filtered')
   }
@@ -680,9 +683,9 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
   # addNewFields <- "C:\\Users\\samuel.robinson\\Desktop\\202203 DAVE HOFER 2_poly.shp"
   # invDir <- "D:\\geoData\\Rasters\\croplandInventory"
   
+  library(tidyverse)
   library(sf)
   library(stars)
-  library(tidyverse)
   
   # sf_use_s2(FALSE) #Turn off spherical geometry
   
@@ -695,7 +698,8 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
     st_make_valid() %>% #Fix geometry if needed
     filter(!st_is_empty(.)) %>% #Remove empty geometries
     group_by(Field) %>% 
-    suppressMessages(summarize(across(everything(),first),do_union = TRUE))
+    suppressMessages(summarize(across(-geometry,first),do_union = TRUE)) %>% 
+    ungroup()
   
   #Get ACI extent polygons, filter out non-overlapping polygons
   aciExtents <- st_read(file.path(invDir,'aciExtents.shp'),quiet = TRUE) %>% 
@@ -722,7 +726,8 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
         suppressMessages(summarize(across(everything(),first),do_union = TRUE)) %>% 
         filter(!Field %in% fieldBoundaries$Field) %>% 
         st_transform(crs=st_crs(fieldBoundaries)) %>% #Transform to fieldBoundary crs
-        bind_rows(fieldBoundaries,.)
+        bind_rows(fieldBoundaries,.) %>% 
+        ungroup()
     } else stop('Additional file ',basename(addNewFields),' not found, or not a shapefile')
   }
   
@@ -789,13 +794,13 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
     
     #Iterates through years of data and gets cover data from each matched raster
     #Originally used only a single raster for each dataset, but some farms span multiple raster extents
-    for(i in 1:length(yUpdates)){ #For each year with NAs
-      naRows <- which(is.na(pull(fieldBoundaries,names(yUpdates[i])))) #Which rows in this year are NA?
-      yNumber <- as.numeric(gsub('y','',names(yUpdates[i]))) #Year to use
+    for(ii in 1:length(yUpdates)){ #For each year with NAs
+      naRows <- which(is.na(pull(fieldBoundaries,names(yUpdates[ii])))) #Which rows in this year are NA?
+      yNumber <- as.numeric(gsub('y','',names(yUpdates[ii]))) #Year to use
       
       #Gets cover from each field boundary/year, and writes to NAs in dataframe
-      fieldBoundaries[naRows,names(yUpdates[i])] <- sapply(naRows,getCover,y=yNumber) 
-      setTxtProgressBar(pb,sum(yUpdates[1:i])/sum(yUpdates))
+      fieldBoundaries[naRows,names(yUpdates[ii])] <- sapply(naRows,getCover,y=yNumber) 
+      setTxtProgressBar(pb,sum(yUpdates[1:ii])/sum(yUpdates))
     }
     close(pb)
   }
