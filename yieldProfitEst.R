@@ -48,39 +48,10 @@ for(i in 1:length(rDirs)){
   setTxtProgressBar(pb,i/length(rDirs))
 }
 close(pb)}
+# save('canProf',file='canProf.Rdata')
+# load('./newsletter2023/canProf.Rdata')
 
-# Single grower/year: Clinton Monchuk 2022 -----------------
-
-temp <- canProf[[1]]
-head(temp)
-
-temp %>% group_by(CropType) %>% 
-  mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $/ac ',round(median(Profit_ac)),', Unprofitable acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
-  ggplot(aes(x=Profit_ac))+
-  geom_density(fill='grey90')+
-  # geom_bar(stat="bin", aes(y=..density..)) +
-  facet_wrap(~CropType)+
-  geom_vline(xintercept = 0,col='red')+
-  scale_y_continuous(labels = percent, name = "Percent of acres") +
-  labs(x='Profit ($/ac)',title='Grower: Clinton Monchuk, Year: 2022')+theme_bw()#+
-  # theme(axis.text.y = element_blank(),axis.ticks.y = element_blank())
-
-p1 <- temp %>% 
-  group_by(CropType) %>% 
-  mutate(CropType=paste0(toupper(CropType),'\nMedian b/Ac: ',round(median(Yield_buAc),2))) %>% 
-  ggplot()+geom_histogram(aes(x=Yield_buAc))+
-  facet_wrap(~CropType,scales='free',nrow=1)+
-  labs(x='Yield (bu/ac)',y='Count')+theme_bw()
-
-p2 <- temp %>% 
-  group_by(CropType) %>% 
-  mutate(CropType=paste0(toupper(CropType),'\nMedian $/ac: ',round(median(Profit_ac)),', % Unprofitable: ',round(100*mean(Profit_ac<0),2))) %>% 
-  ggplot()+geom_histogram(aes(x=Profit_ac))+facet_wrap(~CropType,scales='free',nrow=1)+
-  geom_vline(xintercept = 0,col='red')+
-  labs(x='Profit ($/ac)',y='Count')+theme_bw()
-ggarrange(p1,p2,ncol=1,nrow=2); rm(p1,p2)
-
-#Distribution of crop types and avg yield per year
+# Distribution of crop types and avg yield per year ----------------
 
 # debugonce(profEstimates)
 # temp <- profEstimates("./202201 CLINTON MONCHUK/rasters",includeYield = TRUE)
@@ -185,14 +156,26 @@ yieldTable <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
   select(1:pmin(6,ncol(.))) %>% rename(`Crop Type`='CropType')
 
 #Figure of profit distributions
-profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
-  mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
-  ggplot(aes(x=Profit_ac))+
-  geom_density(fill='grey90')+
-  facet_wrap(~CropType)+
+
+profitDat <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
+  mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) 
+
+profitFig <- profitDat %>%
+  ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))+
+  geom_histogram(binwidth=50)+
+  facet_wrap(~CropType,scales='free_y')+
   geom_vline(xintercept = 0,col='red')+
-  scale_y_continuous(labels = percent, name = "Percent of acres") +
+  scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
+
+##Older version
+# profitFig <- profitDat %>% 
+#   ggplot(aes(x=Profit_ac))+
+#   geom_density(fill='grey90')+
+#   facet_wrap(~CropType)+
+#   geom_vline(xintercept = 0,col='red')+
+#   scale_y_continuous(labels = label_percent(), name = "Percent of acres") +
+#   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
 
 #Other values to replace
 numFieldYears <- length(unique(temp$FieldYear))
@@ -281,16 +264,53 @@ for(i in 1:length(canProf)){
     rename(`Crop Type`='CropType')
   
   #Figure of profit distributions
-  profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
-    mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
-    ggplot(aes(x=Profit_ac))+
-    geom_density(fill='grey90')+
-    facet_wrap(~CropType)+
+  profitDat <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
+    mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) 
+  
+  #Check for distributions with extreme differences in range
+  checkXRange <- temp %>% filter(!is.na(Profit_ac)) %>% 
+    group_by(CropType) %>% 
+    summarize(lwr=min(Profit_ac),upr=max(Profit_ac),r=upr-lwr) %>% 
+    ungroup() %>% mutate(percMaxR=r/max(r)) %>% pull(percMaxR)
+  
+  profitFig <- profitDat %>% #Create ggplot
+    ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))
+  
+  if(any(checkXRange<0.1)){ #If range outliers exist
+    profitFig <- profitFig + 
+      geom_histogram(bins=20)+
+      facet_wrap(~CropType,scales='free')
+  } else {
+    profitFig <- profitFig + 
+      geom_histogram(binwidth=50)+
+      facet_wrap(~CropType,scales='free_y')
+  }
+  
+  profitFig <- profitFig + #Add extra elements
     geom_vline(xintercept = 0,col='red')+
-    scale_y_continuous(labels = percent, name = "Percent of acres") +
-    labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+
-    theme_bw()+
-    coord_cartesian(xlim=c(NA,quantile(temp$Profit_ac,0.99,na.rm=TRUE))) #Show everything below 99th percentile
+    scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
+    labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
+  
+  # profitFig <- profitDat %>%
+  #   ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))+
+  #   geom_histogram(binwidth=50)+
+  #   facet_wrap(~CropType,scales='free_y')+
+  #   geom_vline(xintercept = 0,col='red')+
+  #   scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
+  #   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
+  
+  
+  # #Older version
+  # profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
+  #   mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
+  #   ggplot(aes(x=Profit_ac))+
+  #   geom_density(fill='grey90')+
+  #   facet_wrap(~CropType)+
+  #   geom_vline(xintercept = 0,col='red')+
+  #   scale_y_continuous(labels = percent, name = "Percent of acres") +
+  #   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+
+  #   theme_bw()+
+  #   coord_cartesian(xlim=c(NA,quantile(temp$Profit_ac,0.99,na.rm=TRUE))) #Show everything below 99th percentile
   
   #Other values to replace
   numFieldYears <- length(unique(canProf[[i]]$FieldYear))
