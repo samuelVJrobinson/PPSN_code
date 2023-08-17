@@ -137,7 +137,7 @@ params$TABLEHERE %>%
 \begin{tcolorbox}[colback=ppsnBlue,arc=0mm,halign=flush center,frame empty]
   \color{white}
   \large
-  Thank you again for your support. We look forward to connecting with you when data collection resumes in the fall. Have a great summer!
+  Thank you again for your support. We look forward to connecting with you when data collection resumes in the fall. Have a great harvest!
 \end{tcolorbox}
 
 

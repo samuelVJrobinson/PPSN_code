@@ -940,7 +940,8 @@ profEstimates <- function(rastDir = NULL,
                           cropPrices = "D:\\geoData\\SMSexport\\cropPricesCSV.csv",
                           # retDat = FALSE, #Return dataframe or plot?
                           includeYield = FALSE, #Include yield data along with profit?
-                          useAcres = FALSE, #Convert yield to bu/acre
+                          useAcres = FALSE, #Convert yield to bu/acre - requires bulkDens.csv if not listed in cropPrices
+                          bulkDens = "D:\\geoData\\SMSexpor\\cropBulkDensity.csv",
                           excludeMissing = FALSE){ #Warn about missing econ data, or exclude?
   
   # #Debugging
@@ -951,6 +952,8 @@ profEstimates <- function(rastDir = NULL,
   # retDat = FALSE
   
   if(is.null(rastDir) || !dir.exists(rastDir)) stop('rastDir not found')
+  if(!file.exists(soilMapPath)) stop('soilMapPath not found')
+  if(!file.exists(boundDir)) stop('boundDir not found')
   
   library(sf)
   library(tidyverse)
@@ -1012,6 +1015,7 @@ profEstimates <- function(rastDir = NULL,
     st_as_sf() %>% 
     mutate(SourceKnown=ifelse(is.na(SourceKnown),'Unknown',SourceKnown))
   
+  
   if(any(is.na(rastPaths$CropType))){ #Missing crop types
     badDat <- st_drop_geometry(rastPaths) %>% filter(is.na(CropType)) %>% 
       select(-path)
@@ -1026,6 +1030,22 @@ profEstimates <- function(rastDir = NULL,
       rastPaths <- rastPaths %>% filter(SourceKnown=='Known')
     }
   } 
+  
+  #Bulk density for conversion
+  if(useAcres & any(is.na(rastPaths$Bu_t))){
+    warning('Bulk density not listed for some crops. Using average bushels/tonne')
+    if(!file.exists(bulkDens)) stop('Bulk density csv file not found')
+    bd <- read.csv(bulkDens) %>% rename('Bu_t2'='Bu_t')
+    missingBDcrops <- rastPaths$CropType[is.na(rastPaths$Bu_t)] 
+    if(any(!missingBDcrops %in% bd$CropType)){
+      badCrops <- paste0(missingBDcrops[!missingBDcrops %in% bd$CropType],collapse=', ')
+      warning(paste0('Some crop types were not found in bulk density csv:\n',badCrops
+      ))
+    }
+    rastPaths <- left_join(rastPaths,bd,by='CropType') %>% 
+      mutate(Bu_t=ifelse(is.na(Bu_t),Bu_t2,Bu_t)) %>% 
+      select(-Bu_t2)
+  }
   
   if(any(!complete.cases(st_drop_geometry(rastPaths)))){ #Any other missing values
     badDat <- st_drop_geometry(rastPaths)[!complete.cases(st_drop_geometry(rastPaths)),-1]
