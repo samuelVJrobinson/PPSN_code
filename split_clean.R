@@ -1,11 +1,11 @@
 # source("/media/rsamuelStorage1/geoData/SMSexport/helperFunctions.R")
-source("D:\\geoData\\SMSexport\\helperFunctions.R")
+source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
 
 # Basic operations - unzip and process csv ----------------------------------------
 
 unzipAll('D:\\geoData\\YieldStorageRaw\\202256 ABCO Farms/',rmOld = TRUE)
 
-dirPath <- "D:\\geoData\\SMSexport\\202231 HILLSBORO FARMS/"
+dirPath <- "D:\\geoData\\SMSexport\\202259 HAYWIRE HILL LTD/"
 
 rename_csv(dirPath)
 # debugonce(rename_csv)
@@ -14,7 +14,8 @@ rename_csv(dirPath)
 for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
   split_csv(l,TRUE)
 }
-# debugonce(split_csv)
+debugonce(split_csv)
+split_csv('./202248 KLASSEN AGRIVENTURES/Schmidt.Maund 1_2022.csv',TRUE)
 
 #Merge fields that should be together
 # merge_csv('./SE.Can Sec 1_2022.csv','./Pivot W of 844_2022.csv','./SE.Can Sec 1B_2022.csv')
@@ -23,6 +24,9 @@ for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
 
 # debugonce(clean_csv)
 # debugonce(vegaFilter)
+
+#Single file
+clean_csv('./Dads_2018.csv','./clean/Dads_2018.csv','./clean/Dads_2015.png',useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
 
 #Single directory
 setwd(dirPath)
@@ -90,14 +94,12 @@ for(i in 1:length(yDirs)){
   gc()
 }
  
-
-
 ##Single dir
 debugonce(rasterizeYield)
-rasterizeYield(yieldDir = "./202231 HILLSBORO FARMS/clean/",
+rasterizeYield(yieldDir = "./202262 TRENT RICHARDS/clean/",
                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
                # fieldFiltChar = "2022.csv$",
-               rastDir = "./202231 HILLSBORO FARMS/rasters", overwrite = FALSE)
+               rastDir = "./202262 TRENT RICHARDS/rasters", overwrite = FALSE)
  
 
 

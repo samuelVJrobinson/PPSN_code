@@ -1,6 +1,6 @@
 # Basic estimates of profitability using rasterized yield data
 # source("D:\\geoData\\SMSexport\\helperFunctions.R")
-setwd("C:/Users/Samuel/Documents/Projects/UofC postdoc/PPSN_code")
+
 source("./helperFunctions.R")
 
 #Top 10 crop types from 2022:
@@ -10,7 +10,6 @@ library(tidyverse)
 library(scales)
 library(stars)
 library(ggpubr)
-# library(officer)
 library(rmarkdown)
 
 # setwd("D:/geoData/SMSexport")
@@ -19,13 +18,16 @@ ha2ac <- 2.47105 #Acres per hectare
 
 #Get data from rasters
 
-# #Galpern:
-# yDirs <- list.dirs('.',full.names = TRUE) #Yield directory
-# yDirs <- yDirs[grepl('clean$',yDirs)]
-# rDirs <- gsub('clean$','rasters',yDirs) #Raster directory
-#Multivac:
-rDirs <- list.dirs("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters")
-rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory
+if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
+  setwd('D:/geoData/SMSexport/PPSN_code/')
+  yDirs <- list.dirs('D:/geoData/SMSexport',full.names = TRUE) #Yield directory
+  rDirs <- yDirs[grepl('rasters$',yDirs)] #Raster directory
+} else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
+  setwd("C:/Users/Samuel/Documents/Projects/UofC postdoc/PPSN_code")
+  rDirs <- list.dirs("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters")
+  rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory  
+}
+
 canProf <- vector('list',length(rDirs))
 names(canProf) <- basename(gsub('/rasters','',rDirs))
 
@@ -33,16 +35,15 @@ names(canProf) <- basename(gsub('/rasters','',rDirs))
 {pb <- txtProgressBar(style=3)
 for(i in 1:length(rDirs)){
   if(is.null(canProf[[i]])){
-    ##Galpern:
-    # canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
-    
-    canProf[[i]] <- profEstimates(rDirs[i],
-                                  soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
-                                  cropPrices = "./data/cropPricesCSV.csv",
-                                  bulkDens = "./data/cropBulkDensity.csv",
-                                  boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
-                                  excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
-    
+    if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
+      canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = TRUE,includeYield = TRUE,useAcres = TRUE)
+    } else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
+      canProf[[i]] <- profEstimates(rDirs[i],
+                                    soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
+                                    cropPrices = "./data/cropPricesCSV.csv",bulkDens = "./data/cropBulkDensity.csv",
+                                    boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
+                                    excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
+    }
   }
   setTxtProgressBar(pb,i/length(rDirs))
 }

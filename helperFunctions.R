@@ -942,7 +942,7 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
 profEstimates <- function(rastDir = NULL,
                           soilMapPath = "D:\\geoData\\Shapefiles\\Soil Layers\\PRV_SZ_PDQ_v6.shp",
                           boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
-                          cropPrices = "D:\\geoData\\SMSexport\\cropPricesCSV.csv",
+                          cropPrices = "D:\\geoData\\SMSexport\\PPSN_code\\data\\cropPricesCSV.csv",
                           # retDat = FALSE, #Return dataframe or plot?
                           includeYield = FALSE, #Include yield data along with profit?
                           useAcres = FALSE, #Convert yield to bu/acre
