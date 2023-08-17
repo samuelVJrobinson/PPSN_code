@@ -1,4 +1,4 @@
-source("D:\\geoData\\SMSexport\\helperFunctions.R")
+source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
 
 library(sf)
 library(tidyverse)
@@ -9,9 +9,22 @@ library(stars)
 #Read in ACI data for field boundary polygons
 bFiles <- list.files("D:\\geoData\\SMSexport\\Field Boundaries",pattern = '*.shp$',full.names = TRUE)
 
-for(i in 1:length(bFiles)){
-  cropTypeACI(bFiles[i])  
+mkMap <- function(path){ #Make simple maps of shapefiles
+  shp <- read_sf(path)
+  p <- shp %>% ggplot()+geom_sf(aes(fill=Field))+
+    theme_bw()+labs(title=gsub('_poly.shp','',basename(bFiles[1])))+
+    guides(fill=guide_legend(ncol=(length(unique(shp$Field))%/%40+1)))
+  ggsave(filename=gsub('.shp','.png',path),plot=p,scale = 3)
 }
+
+for(i in 1:length(bFiles)){
+  cropTypeACI(bFiles[i])
+}
+
+for(i in 1:length(bFiles)){ #Make simple maps
+  mkMap(bFiles[i])
+}
+
 
 ##Debugging
 # d <- read_sf("D:\\geoData\\SMSexport\\Field Boundaries/202202 LAKELAND COLLEGE_poly.shp")
@@ -20,8 +33,34 @@ for(i in 1:length(bFiles)){
 # cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries/202231 HILLSBORO FARMS_poly.shp")
 
 debugonce(cropTypeACI)
-cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries/202234 LEGUEE FARMS_poly.shp")  
-cropTypeACI(bFiles[3],addNewFields = "C:\\Users\\samuel.robinson\\Desktop\\202203 DAVE HOFER 2_poly.shp")  
+# cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries/202234 LEGUEE FARMS_poly.shp")  
+# cropTypeACI(bFiles[3],addNewFields = "C:\\Users\\samuel.robinson\\Desktop\\202203 DAVE HOFER 2_poly.shp")
+cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries\\202212 202 AGVENTURES_poly.shp")
+
+#Check for duplicate fields within shapefiles
+
+multiField <- sapply(bFiles,function(path){
+  shp <- read_sf(path)
+  ct <- table(shp$Field)
+  ct <- ct[ct>1]
+  # ifelse(length(ct==0),0,ct)
+  length(ct)
+})
+
+multiField <- multiField[multiField>0]
+
+names(multiField)
+
+for(p in 2:length(multiField)){
+  read_sf(names(multiField)[p]) %>% 
+    group_by(Field) %>% 
+    summarize(across(-geometry,~ifelse(length(.x)==1,.x,NA),do_union = TRUE)) %>% 
+    ungroup() %>% 
+    st_write(names(multiField)[p],append = FALSE,quiet=TRUE)  
+}
+
+
+
 
 
 # Match crop type from polygons to yield data -----------------------------
