@@ -46,7 +46,7 @@ knitr::opts_chunk$set(echo = FALSE)
 <!-- \end{center} -->
 <!-- \noindent -->
 <!-- \includegraphics[width=\paperwidth]{./PPSNnewsletter_Jul4.pdf} -->
-\includepdf[pages=-]{PPSNnewsletter_Jul11.pdf}
+\includepdf[pages=-]{PPSNnewsletter_Aug24.pdf}
 \pagebreak
 
 \begin{tikzpicture}[remember picture,overlay]
@@ -96,10 +96,25 @@ You supplied the project with:
   \item `r params$NUMYEARS` years of data
 \end{itemize}
 
-Quick Facts about your data:
-\begin{itemize}
-  \item In 2022 `r params$PERCMARGACRES`\% of total acres were marginal (less than \$0 profit/acre)
-\end{itemize}
+
+```{r percMarg} 
+
+if(!is.na(params$PERCMARGACRES)){
+  paste0(
+  "Quick Facts about your data:
+  \begin{itemize}
+  \item In 2022",params$PERCMARGACRES," \% of total acres were marginal (less than \$0 profit/acre).
+  \end{itemize}"
+  )
+}
+
+```
+
+<!-- Doesn't work if no marginal acres (i.e. no economic data for 2022) -->
+<!-- Quick Facts about your data: -->
+<!-- \begin{itemize} -->
+<!--   \item In 2022, `r params$PERCMARGACRES`\% of total acres were marginal (less than \$0 profit/acre). -->
+<!-- \end{itemize} -->
 
 \columnbreak
 

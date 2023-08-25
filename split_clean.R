@@ -96,11 +96,10 @@ for(i in 1:length(yDirs)){
  
 ##Single dir
 debugonce(rasterizeYield)
-rasterizeYield(yieldDir = "./202227 CHERNESKI LAND AND CATTLE/clean/",
+rasterizeYield(yieldDir = "../202262 TRENT RICHARDS/clean",
                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
                # fieldFiltChar = "2022.csv$",
-               rastDir = "./202227 CHERNESKI LAND AND CATTLE/rasters", overwrite = FALSE)
-
+               rastDir = "../202262 TRENT RICHARDS/rasters/", overwrite = FALSE)
 
 # Other things ------------------------------------------------------------
 debugonce(split_csv)

@@ -902,13 +902,13 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
             dat$Yield_tha <- dat$Yield_tha - (modMat %*% coefs)[,1] + mean(modMat %*% coefs) 
             dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero 
           },outFile = errPath)
-        }
-        
-        #If an error occurred during smoothing
-        if(file.exists(errPath)){
-          print(paste0('Error occurred during smoothing procedure for field ',
-                       fieldName,'. Data (n = ',nrow(dat),') may be too sparse.'))
-          next()
+          
+          #If an error occurred during smoothing
+          if(file.exists(errPath)){
+            print(paste0('Error occurred during smoothing procedure for field ',
+                         fieldName,'. Data (n = ',nrow(dat),') may be too sparse.'))
+            next()
+          }
         }
         
         #Aggregate data and write to raster
@@ -972,11 +972,12 @@ profEstimates <- function(rastDir = NULL,
     separate(fieldYr,c('Field','Year'),sep='_',remove = FALSE) %>% 
     mutate(Year=as.numeric(Year))
   
-  growerID <- basename(gsub(basename(rastDir),'',rastDir))
+  if(nrow(rastPaths)==0){
+    warning(paste0('No raster files found in ',rastDir))
+    return(NA)
+  }
   
-  #Get provincial/soil zones
-  soilProv <- read_sf(soilMapPath) %>% #st_transform(st_crs(bPoly)) %>% 
-    group_by(SoilZone,Prov) %>% summarize(do_union = TRUE,.groups = "keep") %>% ungroup()
+  growerID <- basename(gsub(basename(rastDir),'',rastDir))
   
   #Get field boundary polygons with crop type
   bFiles <- list.files(boundDir,pattern = '*.shp$',full.names = TRUE)
@@ -989,17 +990,31 @@ profEstimates <- function(rastDir = NULL,
   
   bPoly <- st_read(bFiles,quiet=TRUE) %>% 
     mutate(across(matches('^y'),~gsub('_.*$','',.x))) %>% #Gets most-dominant cover type
-    mutate(across(matches('^y'),~ifelse(.x=='NonCrop',NA,.x))) %>% 
-    st_join(st_transform(soilProv,st_crs(.))) 
+    mutate(across(matches('^y'),~ifelse(.x=='NonCrop',NA,.x)))
+  
+  #Get provincial/soil zones
+  soilProv <- read_sf(soilMapPath) %>%  
+    group_by(SoilZone,Prov) %>% summarize(do_union = TRUE,.groups = "keep") %>% 
+    ungroup() %>% st_transform(st_crs(bPoly)) 
+  
+  bPoly <- bPoly %>% st_join(soilProv) 
   
   noSoil <- is.na(bPoly$SoilZone)|is.na(bPoly$Prov) #Fields not overlapping soil polygons
   
   if(any(noSoil)){
     badDat <- st_drop_geometry(bPoly) %>% filter(noSoil) %>% 
       transmute(Field,` `="...",y2021,y2022,SoilZone,Prov)
-    warning('Some fields did not overlap soil polygons and were removed: \n',
+    warning('Some fields did not overlap soil polygons and were matched with nearby polygons: \n',
             paste(capture.output(print(badDat)), collapse = "\n"))
-    bPoly <- bPoly %>% filter(!noSoil)
+    # bPoly <- bPoly %>% filter(!noSoil)
+    
+    bPoly$SoilZone[noSoil] <- soilProv$SoilZone[
+      st_nearest_feature(st_centroid(st_geometry(bPoly))[noSoil],soilProv)
+    ]
+    
+    bPoly$Prov[noSoil] <- soilProv$Prov[
+      st_nearest_feature(st_centroid(st_geometry(bPoly))[noSoil],soilProv)
+    ]
   }
   
   bPoly <- bPoly %>% pivot_longer(matches('^y20'),names_to='Year',values_to='CropType') %>% 
@@ -1043,7 +1058,7 @@ profEstimates <- function(rastDir = NULL,
     bd <- read.csv(bulkDens) %>% rename('Bu_t2'='Bu_t')
     missingBDcrops <- rastPaths$CropType[is.na(rastPaths$Bu_t)] 
     if(any(!missingBDcrops %in% bd$CropType)){
-      badCrops <- paste0(missingBDcrops[!missingBDcrops %in% bd$CropType],collapse=', ')
+      badCrops <- paste0(unique(missingBDcrops[!missingBDcrops %in% bd$CropType]),collapse=', ')
       warning(paste0('Some crop types were not found in bulk density csv:\n',badCrops
       ))
     }
@@ -1090,18 +1105,4 @@ profEstimates <- function(rastDir = NULL,
                      rp=rastPaths,inclYld=includeYield,acres=useAcres) %>%
     set_names(nm = rastPaths$fieldYr) %>% 
     bind_rows(.id='FieldYear')
-  
-  # if(retDat){ #ggplot image
-  #   return(profCalc)
-  # } else {
-  #   p1 <- profCalc %>% mutate(Profit_ac=Profit_ha/ha2ac) %>% 
-  #     group_by(CropType) %>% 
-  #     mutate(CropType=paste0(toupper(CropType),', Med $/ac: ',round(median(Profit_ac)),', % Unprofitable: ',round(100*mean(Profit_ac<0),2))) %>% 
-  #     ggplot()+geom_histogram(aes(x=Profit_ac),bins=30)+
-  #     facet_wrap(~CropType,scales='free')+
-  #     geom_vline(xintercept = 0,col='red')+
-  #     labs(x='Profit ($/acre)',y='Count')+
-  #     theme_classic()  
-  #   return(p1)
-  # }
 }

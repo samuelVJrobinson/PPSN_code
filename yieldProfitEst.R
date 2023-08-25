@@ -23,16 +23,18 @@ if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
   rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory  
 }
 source("./helperFunctions.R")
-canProf <- vector('list',length(rDirs))
-names(canProf) <- basename(gsub('/rasters','',rDirs))
+# canProf <- vector('list',length(rDirs))
+# names(canProf) <- basename(gsub('/rasters','',rDirs))
 
-# i <- 1
+# i <- 33 #Hebert agventures - no rasters
+# i <- 36 #Frederick
+
 {pb <- txtProgressBar(style=3)
 for(i in 1:length(rDirs)){
   if(is.null(canProf[[i]])){
     if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
-      debugonce(profEstimates)
-      canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE) 
+      # debugonce(profEstimates)
+      canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
     } else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
       canProf[[i]] <- profEstimates(rDirs[i],
                                     soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
@@ -45,7 +47,17 @@ for(i in 1:length(rDirs)){
 }
 close(pb)}
 save('canProf',file='canProf.Rdata')
-# load('./newsletter2023/canProf.Rdata')
+load('./canProf.Rdata')
+
+# which(sapply(canProf,length)==1)
+
+#Get summaries of each grower
+sumList <- lapply(canProf[sapply(canProf,length)>1],function(x){
+  if(class(x)=='logical') return(NA)
+  x %>% group_by(FieldYear) %>% 
+    summarize(CropType=first(CropType),Profit=mean(Profit_ac),Yield=mean(Yield_buAc))
+})
+
 
 # Distribution of crop types and avg yield per year ----------------
 
@@ -211,11 +223,19 @@ growerDat <- # read.csv('./data/growerCSV.csv',strip.white = TRUE) %>% #Galpern
 # 14: 202217 - issue with profit distribution maps
 # 18: 202221 - fababean line has no info - not needed
 
+# 31: 202241 - no data from 2022, only 2019/2018 - what should be put in place of the profit figure?
+
 for(i in 1:length(canProf)){
   if(class(canProf[[i]])=='logical') next
+  
   gID <- sapply(str_split(names(canProf)[i],' '),first) %>% gsub('-.*','',.)
   gName <- growerDat$FirstName[which(growerDat$GrowerID==gID)]
   fName <- growerDat$BusinessName[which(growerDat$GrowerID==gID)]
+  
+  if(file.exists(paste0('./reports/',gID,'-report.pdf'))){ #Skip existing reports (comment out to replace)
+    print(paste0('File ',paste0('./reports/',gID,'-report.pdf'),' already exists'))
+    next
+  }
   
   #Data for grower i
   temp <- canProf[[i]] %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
@@ -260,53 +280,76 @@ for(i in 1:length(canProf)){
     rename(`Crop Type`='CropType')
   
   #Figure of profit distributions
-  profitDat <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
+  profitDat <- temp %>% filter(!is.na(Profit_ac)) %>% 
+    group_by(CropType) %>%
+    filter(Profit_ac<quantile(Profit_ac,0.99)) %>% #Remove upper 1% profits
     mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) 
   
-  #Check for distributions with extreme differences in range
-  checkXRange <- temp %>% filter(!is.na(Profit_ac)) %>% 
-    group_by(CropType) %>% 
-    summarize(lwr=min(Profit_ac),upr=max(Profit_ac),r=upr-lwr) %>% 
-    ungroup() %>% mutate(percMaxR=r/max(r)) %>% pull(percMaxR)
-  
-  profitFig <- profitDat %>% #Create ggplot
-    ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))
-  
-  if(any(checkXRange<0.1)){ #If range outliers exist
-    profitFig <- profitFig + 
-      geom_histogram(bins=20)+
-      facet_wrap(~CropType,scales='free')
+  if(nrow(profitDat)==0){
+    print(paste0('No profit data found for ',gID,'. Skipping.'))
+    # profitFig <- ggplot()+theme_minimal()
+    
+    temp %>% filter(Year==max(Year)) %>% 
+      ggplot(aes(x=Yield_buAc,y=after_stat(count),weight=0.0988421526))+
+      geom_histogram()+
+      facet_wrap(~CropType,scales='free')+
+      scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
+      labs(x='Profit ($/acre)',title=paste0('Yield distributions during ',max(temp$Year)))+
+      theme_bw()
+    
+    
+    
   } else {
-    profitFig <- profitFig + 
-      geom_histogram(binwidth=50)+
-      facet_wrap(~CropType,scales='free_y')
+    #Check for distributions with extreme differences in range
+    checkXRange <- temp %>% filter(!is.na(Profit_ac)) %>% 
+      group_by(CropType) %>% 
+      summarize(lwr=min(Profit_ac),upr=max(Profit_ac),r=upr-lwr) %>% 
+      ungroup() %>% mutate(percMaxR=r/max(r)) %>% pull(percMaxR)
+    
+    profitFig <- profitDat %>% #Create ggplot
+      ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526)) 
+    #note: weight = Acres per 20x20m cell
+    
+    if(any(checkXRange<0.1)){ #If range outliers exist
+      profitFig <- profitFig + 
+        geom_histogram(bins=20)+
+        facet_wrap(~CropType,scales='free')
+    } else {
+      profitFig <- profitFig + 
+        geom_histogram(binwidth=50)+
+        facet_wrap(~CropType,scales='free_y')
+    }
+    
+    profitFig <- profitFig + #Add extra elements
+      geom_vline(xintercept = 0,col='red')+
+      scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
+      labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+
+      theme_bw()+theme(strip.text = element_text(size=8))
+    
+    # profitFig <- profitDat %>%
+    #   ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))+
+    #   geom_histogram(binwidth=50)+
+    #   facet_wrap(~CropType,scales='free_y')+
+    #   geom_vline(xintercept = 0,col='red')+
+    #   scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
+    #   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
+    
+    
+    # #Older version
+    # profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
+    #   mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
+    #   ggplot(aes(x=Profit_ac))+
+    #   geom_density(fill='grey90')+
+    #   facet_wrap(~CropType)+
+    #   geom_vline(xintercept = 0,col='red')+
+    #   scale_y_continuous(labels = percent, name = "Percent of acres") +
+    #   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+
+    #   theme_bw()+
+    #   coord_cartesian(xlim=c(NA,quantile(temp$Profit_ac,0.99,na.rm=TRUE))) #Show everything below 99th percentile
+      
   }
   
-  profitFig <- profitFig + #Add extra elements
-    geom_vline(xintercept = 0,col='red')+
-    scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
-    labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
   
-  # profitFig <- profitDat %>%
-  #   ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))+
-  #   geom_histogram(binwidth=50)+
-  #   facet_wrap(~CropType,scales='free_y')+
-  #   geom_vline(xintercept = 0,col='red')+
-  #   scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
-  #   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
-  
-  
-  # #Older version
-  # profitFig <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
-  #   mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
-  #   ggplot(aes(x=Profit_ac))+
-  #   geom_density(fill='grey90')+
-  #   facet_wrap(~CropType)+
-  #   geom_vline(xintercept = 0,col='red')+
-  #   scale_y_continuous(labels = percent, name = "Percent of acres") +
-  #   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+
-  #   theme_bw()+
-  #   coord_cartesian(xlim=c(NA,quantile(temp$Profit_ac,0.99,na.rm=TRUE))) #Show everything below 99th percentile
   
   #Other values to replace
   numFieldYears <- length(unique(canProf[[i]]$FieldYear))
@@ -329,10 +372,9 @@ for(i in 1:length(canProf)){
   }
   
   render('grower-report.Rmd',params = parList,
-         envir = new.env(),
-         # output_dir = './reports',
-         output_file = paste0('./reports/',gID,'-report.pdf'),clean = TRUE)
-  
+         envir = new.env(),# output_dir = './reports',
+         output_file = paste0('./reports/',gID,'-report.pdf'),clean = TRUE,quiet = TRUE)
+  print(paste0('Finished report ',i,': grower ID ',gID))
 }
 
 
