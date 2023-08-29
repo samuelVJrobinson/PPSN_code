@@ -107,35 +107,55 @@ for(path in fps){
 readDir <- "D:\\geoData\\YieldStorageRaw\\202261 David Forseille/202261 Yield Data Files 2021 2022/"
 writeDir <- "D:\\geoData\\SMSexport\\202261 DAVID FORSEILLE"
 
+lbsAc2tha <- 2.47105/2204.61 #Conversion factor for lbs per acre
+
 fps <- list.files(readDir,pattern='*.shp$',recursive = TRUE,full.names = TRUE)
 fps <- fps[grepl('Harvest',fps)]
 
-path <- fps[1]
+cropBulkDens <- read.csv('./data/cropBulkDensity.csv') #Crop bulk density info
+
+# path <- fps[1]
 
 for(path in fps){
   
   fname <- strsplit(path,'/')[[1]]
-  fname <- gsub("_Harvest.*shp$","",fname[length(fname)])
+  fname <- gsub("(Forseille Fa_Forseille Fa_|_Harvest.*shp$)","",fname[length(fname)])
   fname <- gsub('_','-',fname)
   
-  #START HERE
+  # # Test read JSON files
+  # lapply(list.files(readDir,pattern='*.json$',recursive = TRUE,full.names = TRUE),function(x){
+  #   j <- readLines(x,warn=FALSE)
+  #   j <- j[which(grepl('CropName',j))]
+  #   j <- strsplit(j,'"')[[1]][4]
+  #   j
+  # })
+  
+  #Read JD JSON file to get crop type
+  cropName <- readLines(gsub(".shp$","-Deere-Metadata.json",path),warn = FALSE)
+  cropName <- cropName[which(grepl('CropName',cropName))]
+  cropName <- strsplit(cropName,'"')[[1]][4]
+  if(cropName=="Wheat (Hard Red Spring)") cropName <- 'Spring Wheat'
+  
+  #Lookup dry moisture%
+  DryMoisture_perc <- cropBulkDens$DryMoisture_perc[cropBulkDens$CropType==cropName]
   
   read_sf(path) %>% 
     mutate(Longitude=st_coordinates(.)[,1],Latitude=st_coordinates(.)[,2]) %>% 
-    st_drop_geometry() %>%
+    # st_drop_geometry() %>%
     mutate(Grower="202262 DAVID FORSEILLE",Field=fname) %>%
     mutate(IsoTime =as.POSIXlt(IsoTime,format='%FT%H:%M:%S')) %>% 
     mutate(Date_ymd=format(IsoTime,format='%F'),Year=format(IsoTime,format='%Y')) %>% 
-    transmute(Longitude,Latitude,Grower,Field,Date_ymd,Year,Crop=Crop,Variety=VARIETY,
+    transmute(Longitude,Latitude,Grower,Field,Date_ymd,Year,Crop=cropName,Variety=VARIETY,
               CombineID=Machine,
-              Distance_m=DISTANCE ,Track_deg=Heading,Duration_s=interval_s,Elevation_m=Elevation,
-              SwathWidth_m=SWATHWIDTH ,Moisture_perc=`moisture_%`,
-              Yield_tha=`rate_kg/ha`/1000,Fuel_L=`fuel_L/ha`) %>% 
+              Distance_m=DISTANCE ,Track_deg=Heading,
+              Duration_s=1, #difftime(IsoTime,lag(IsoTime),units = 'secs'),
+              Elevation_m=Elevation/3.28084, #Originally in feet
+              SwathWidth_m=SWATHWIDTH,Moisture_perc=Moisture,
+              Yield_tha=(WetMass*lbsAc2tha)*(1-Moisture_perc/100)/(1-DryMoisture_perc/100),
+              Fuel_L=NA,geometry=geometry) %>% 
     filter(!is.na(Yield_tha),Distance_m!=0,!is.na(Distance_m)) %>% 
-    mutate(Yield_tha=ifelse(Yield_tha==0,0.01,Yield_tha)) %>% 
-    write.csv(file=paste0(writeDir,'\\',fname,'_',unique(.$Year),'.csv'),row.names=FALSE)  
-  
-  
+    mutate(Yield_tha=ifelse(Yield_tha==0,0.01,Yield_tha)) %>%
+    write.csv(file=paste0(writeDir,'\\',fname,'_',unique(.$Year),'.csv'),row.names=FALSE)
 }
 
 
