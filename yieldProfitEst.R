@@ -15,38 +15,36 @@ ha2ac <- 2.47105 #Acres per hectare
 #Get data from rasters
 if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
   setwd('D:/geoData/SMSexport/PPSN_code/')
-  yDirs <- list.dirs('D:/geoData/SMSexport',full.names = TRUE) #Yield directory
-  rDirs <- yDirs[grepl('rasters$',yDirs)] #Raster directory
+  rDirs <- list.dirs('D:/geoData/SMSexport',full.names = TRUE) #Yield directory
+  rDirs <- rDirs[grepl('rasters$',rDirs)] #Raster directory
 } else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
   setwd("C:/Users/Samuel/Documents/Projects/UofC postdoc/PPSN_code")
   rDirs <- list.dirs("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters")
   rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory  
 }
 source("./helperFunctions.R")
+
 # canProf <- vector('list',length(rDirs))
 # names(canProf) <- basename(gsub('/rasters','',rDirs))
-
-# i <- 33 #Hebert agventures - no rasters
-# i <- 36 #Frederick
-
-{pb <- txtProgressBar(style=3)
-for(i in 1:length(rDirs)){
-  if(is.null(canProf[[i]])){
-    if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
-      # debugonce(profEstimates)
-      canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
-    } else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
-      canProf[[i]] <- profEstimates(rDirs[i],
-                                    soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
-                                    cropPrices = "./data/cropPricesCSV.csv",bulkDens = "./data/cropBulkDensity.csv",
-                                    boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
-                                    excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
-    }
-  }
-  setTxtProgressBar(pb,i/length(rDirs))
-}
-close(pb)}
-save('canProf',file='canProf.Rdata')
+# 
+# {pb <- txtProgressBar(style=3)
+# for(i in 1:length(rDirs)){
+#   if(is.null(canProf[[i]])){
+#     if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
+#       # debugonce(profEstimates)
+#       canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
+#     } else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
+#       canProf[[i]] <- profEstimates(rDirs[i],
+#                                     soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
+#                                     cropPrices = "./data/cropPricesCSV.csv",bulkDens = "./data/cropBulkDensity.csv",
+#                                     boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
+#                                     excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
+#     }
+#   }
+#   setTxtProgressBar(pb,i/length(rDirs))
+# }
+# close(pb)}
+# save('canProf',file='canProf.Rdata')
 load('./canProf.Rdata')
 
 # which(sapply(canProf,length)==1)
@@ -209,6 +207,8 @@ render('grower-report.Rmd',params = parList,
 
 ##All growers
 
+setwd('./newsletter2023/')
+
 #Load list of growers
 growerDat <- # read.csv('./data/growerCSV.csv',strip.white = TRUE) %>% #Galpern
   read.csv('../data/growerCSV.csv',strip.white = TRUE) %>% #Multivac
@@ -225,7 +225,7 @@ growerDat <- # read.csv('./data/growerCSV.csv',strip.white = TRUE) %>% #Galpern
 
 # 31: 202241 - no data from 2022, only 2019/2018 - what should be put in place of the profit figure?
 
-for(i in 1:length(canProf)){
+for(i in 31:length(canProf)){
   if(class(canProf[[i]])=='logical') next
   
   gID <- sapply(str_split(names(canProf)[i],' '),first) %>% gsub('-.*','',.)
@@ -289,15 +289,13 @@ for(i in 1:length(canProf)){
     print(paste0('No profit data found for ',gID,'. Skipping.'))
     # profitFig <- ggplot()+theme_minimal()
     
-    temp %>% filter(Year==max(Year)) %>% 
+    profitFig <- temp %>% filter(Year==max(Year)) %>% 
       ggplot(aes(x=Yield_buAc,y=after_stat(count),weight=0.0988421526))+
       geom_histogram()+
       facet_wrap(~CropType,scales='free')+
       scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
-      labs(x='Profit ($/acre)',title=paste0('Yield distributions during ',max(temp$Year)))+
+      labs(x='Yield (bu/acre)',title=paste0('Yield distributions during ',max(temp$Year)))+
       theme_bw()
-    
-    
     
   } else {
     #Check for distributions with extreme differences in range
@@ -349,8 +347,6 @@ for(i in 1:length(canProf)){
       
   }
   
-  
-  
   #Other values to replace
   numFieldYears <- length(unique(canProf[[i]]$FieldYear))
   numCropTypes <- length(unique(canProf[[i]]$CropType))
@@ -367,13 +363,14 @@ for(i in 1:length(canProf)){
                   NUMCROPS=as.character(numCropTypes),NUMYEARS=as.character(numYears),
                   PERCMARGACRES=as.character(percMargAc),TABLEHERE=as.data.frame(yieldTable),
                   FIGUREHERE=profitFig)
-  if(any(sapply(parList,function(x) any(is.na(x))))){
-    stop('NAs found in parList for grower ',gID)
-  }
+  # if(any(sapply(parList,function(x) any(is.na(x))))){
+  #   print('NAs found in parList for grower ',gID)
+  # }
   
   render('grower-report.Rmd',params = parList,
          envir = new.env(),# output_dir = './reports',
-         output_file = paste0('./reports/',gID,'-report.pdf'),clean = TRUE,quiet = TRUE)
+         output_file = paste0('./reports/',gID,'-report.pdf'),
+         clean = TRUE,quiet = TRUE)
   print(paste0('Finished report ',i,': grower ID ',gID))
 }
 

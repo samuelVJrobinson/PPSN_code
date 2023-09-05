@@ -97,24 +97,13 @@ You supplied the project with:
 \end{itemize}
 
 
-```{r percMarg} 
-
-if(!is.na(params$PERCMARGACRES)){
-  paste0(
-  "Quick Facts about your data:
-  \begin{itemize}
-  \item In 2022",params$PERCMARGACRES," \% of total acres were marginal (less than \$0 profit/acre).
-  \end{itemize}"
-  )
-}
-
+```{r percMarg, eval = !is.na(params$PERCMARGACRES), echo=FALSE, results='asis'} 
+cat("Quick facts about your data")
+cat("\\begin{itemize}")
+cat(paste0("\\item In 2022, ",params$PERCMARGACRES,"\\% of total acres were marginal (less than \\$0 profit/acre)."))
+cat("\\end{itemize}")
 ```
 
-<!-- Doesn't work if no marginal acres (i.e. no economic data for 2022) -->
-<!-- Quick Facts about your data: -->
-<!-- \begin{itemize} -->
-<!--   \item In 2022, `r params$PERCMARGACRES`\% of total acres were marginal (less than \$0 profit/acre). -->
-<!-- \end{itemize} -->
 
 \columnbreak
 
