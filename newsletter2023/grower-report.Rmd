@@ -131,7 +131,7 @@ params$TABLEHERE %>%
 
 \end{multicols}
 
-```{r profFigure, fig.height=4, fig.width=7.5}
+```{r profFigure, fig.height=4, fig.width=7.5, warning=FALSE, message=FALSE}
   
   # print('FIGUREHERE')
   params$FIGUREHERE

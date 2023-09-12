@@ -9,20 +9,21 @@ library(ggpubr)
 library(rmarkdown)
 
 # setwd("D:/geoData/SMSexport")
+# setwd('./newsletter2023/')
 
 ha2ac <- 2.47105 #Acres per hectare
 
 #Get data from rasters
 if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
-  setwd('D:/geoData/SMSexport/PPSN_code/')
+  setwd('D:/geoData/SMSexport/PPSN_code/newsletter2023/')
   rDirs <- list.dirs('D:/geoData/SMSexport',full.names = TRUE) #Yield directory
   rDirs <- rDirs[grepl('rasters$',rDirs)] #Raster directory
 } else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
-  setwd("C:/Users/Samuel/Documents/Projects/UofC postdoc/PPSN_code")
+  setwd("C:/Users/Samuel/Documents/Projects/UofC postdoc/PPSN_code/newsletter2023/")
   rDirs <- list.dirs("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters")
   rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory  
 }
-source("./helperFunctions.R")
+source("../helperFunctions.R")
 
 # canProf <- vector('list',length(rDirs))
 # names(canProf) <- basename(gsub('/rasters','',rDirs))
@@ -44,7 +45,7 @@ source("./helperFunctions.R")
 #   setTxtProgressBar(pb,i/length(rDirs))
 # }
 # close(pb)}
-# save('canProf',file='canProf.Rdata')
+# save('canProf',file='./canProf.Rdata')
 load('./canProf.Rdata')
 
 # which(sapply(canProf,length)==1)
@@ -57,166 +58,86 @@ sumList <- lapply(canProf[sapply(canProf,length)>1],function(x){
 })
 
 
-# Distribution of crop types and avg yield per year ----------------
-
-# debugonce(profEstimates)
-# temp <- profEstimates("./202201 CLINTON MONCHUK/rasters",includeYield = TRUE)
-temp <- profEstimates("C:\\Users\\Samuel\\Documents\\Shapefiles\\Yield Rasters\\202201 CLINTON MONCHUK\\rasters",
-                      soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
-                      cropPrices = "./cropPricesCSV.csv",
-                      bulkDens = "./cropBulkDensity.csv",
-                      boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
-                      excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
-
-# temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
-#   # head
-#   group_by(Year,CropType) %>% 
-#   summarize(medYield=median(Yield_buAc)) %>% 
-#   ungroup() %>% 
-#   pivot_wider(names_from='CropType',values_from='medYield')
-  
-# Overall profitability -----------------
-
-canProf <- canProf[sapply(canProf,length)==4] %>% 
-  bind_rows(.id = 'grower')
-
-#Canola profitability
-canProf %>% filter(CropType=='Canola') %>% 
-  ggplot()+geom_histogram(aes(x=Profit_ac))+
-  geom_vline(xintercept = 0,col='red')+
-  labs(x='Profit ($/acre)',y='Count')+
-  theme_classic()
-
-canProf%>% filter(CropType=='Canola') %>% 
-  ggplot(aes(x=Profit_ac)) +
-  stat_ecdf(geom = "step")+
-  # geom_hline(yintercept = 0.1,col='red')+
-  # coord_cartesian(xlim=c(NA,200),ylim=c(0,0.2))+
-  labs(x='Profit ($/acre)',y='Cumulative distribution')+
-  # scale_x_continuous(breaks = seq(-200,1200,50))+
-  # scale_y_continuous(breaks = seq(0,1,0.02))+
-  theme_bw()
-
-# Overall profitability
-canProf %>% ggplot()+geom_histogram(aes(x=Profit_ac))+
-  geom_vline(xintercept = 0,col='red')+
-  labs(x='Profit ($/acre)',y='Count')+
-  theme_classic()  
-
-canProf %>% ggplot(aes(x=Profit_ac)) + 
-  stat_ecdf(geom = "step")+
-  geom_hline(yintercept = 0.1,col='red')+
-  coord_cartesian(xlim=c(NA,1200))+
-  labs(x='Profit ($/acre)',y='Cumulative distribution')+
-  scale_x_continuous(breaks = seq(-200,1200,100))+
-  scale_y_continuous(breaks = seq(0,1,0.1))+
-  theme_bw()
-
-#Broken up by crop type
-top6crop <- canProf %>% count(CropType) %>% arrange(desc(n)) %>% 
-  slice(1:6) %>% pull(CropType)
-
-canProf %>% filter(CropType %in% top6crop) %>% 
-  group_by(CropType) %>% 
-  mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $/ac ',round(median(Profit_ac)),', Unprofitable acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
-  ggplot()+geom_histogram(aes(x=Profit_ac),bins=30)+
-  facet_wrap(~CropType,scales='free')+
-  geom_vline(xintercept = 0,col='red')+
-  # geom_vline(data=)
-  labs(x='Profit ($/acre)',y='Count')+
-  theme_classic()  
-
-canProf %>% filter(CropType %in% top6crop) %>% 
-  group_by(CropType) %>% 
-  mutate(CropType=paste0(toupper(CropType),', Med $/ac: ',round(median(Profit_ac)),', % Unprofitable: ',round(100*mean(Profit_ac<0),2))) %>% 
-  ggplot(aes(x=Profit_ac,col=CropType)) + 
-  stat_ecdf(geom = "step")+
-  geom_vline(xintercept = 0,col='red')+
-  # coord_cartesian(xlim=c(NA,1200))+
-  labs(x='Profit ($/acre)',y='Cumulative distribution')+
-  coord_cartesian(xlim=c(NA,2000))+
-  # scale_x_continuous(breaks = seq(-200,1200,100))+
-  scale_y_continuous(breaks = seq(0,1,0.1))+
-  scale_colour_brewer(type = 'qual')+
-  theme_bw()
-
-
 # Report for growers ------------------------------------------------------
 
-setwd('./newsletter2023/')
-
-temp <- canProf[[1]] #Single grower/year - Clinton Monchuck
-
-#Table of summary yields
-yieldTable <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
-  group_by(CropType) %>% mutate(N=n()) %>% arrange(desc(N)) %>% 
-  ungroup() %>% 
-  mutate(CropType=factor(CropType,levels=unique(CropType))) %>% 
-  group_by(Year,CropType,.drop = FALSE) %>% 
-  summarize(medYield=round(median(Yield_buAc,na.rm=TRUE),0)) %>% 
-  mutate(medYield=ifelse(is.na(medYield),'-',as.character(medYield))) %>%
-  ungroup() %>% mutate(Year=factor(Year,levels=rev(unique(Year)))) %>% 
-  pivot_wider(names_from='Year',values_from='medYield',names_sort = TRUE) %>%
-  arrange(desc(CropType)) %>%   
-  slice(1:pmin(6,nrow(.))) %>% 
-  select(1:pmin(6,ncol(.))) %>% rename(`Crop Type`='CropType')
-
-#Figure of profit distributions
-
-profitDat <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
-  mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) 
-
-profitFig <- profitDat %>%
-  ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))+
-  geom_histogram(binwidth=50)+
-  facet_wrap(~CropType,scales='free_y')+
-  geom_vline(xintercept = 0,col='red')+
-  scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
-  labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
-
-##Older version
-# profitFig <- profitDat %>% 
-#   ggplot(aes(x=Profit_ac))+
-#   geom_density(fill='grey90')+
-#   facet_wrap(~CropType)+
+# temp <- canProf[[1]] #Single grower/year - Clinton Monchuck
+# 
+# #Table of summary yields
+# yieldTable <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
+#   group_by(CropType) %>% mutate(N=n()) %>% arrange(desc(N)) %>% 
+#   ungroup() %>% 
+#   mutate(CropType=factor(CropType,levels=unique(CropType))) %>% 
+#   group_by(Year,CropType,.drop = FALSE) %>% 
+#   summarize(medYield=round(median(Yield_buAc,na.rm=TRUE),0)) %>% 
+#   mutate(medYield=ifelse(is.na(medYield),'-',as.character(medYield))) %>%
+#   ungroup() %>% mutate(Year=factor(Year,levels=rev(unique(Year)))) %>% 
+#   pivot_wider(names_from='Year',values_from='medYield',names_sort = TRUE) %>%
+#   arrange(desc(CropType)) %>%   
+#   slice(1:pmin(6,nrow(.))) %>% 
+#   select(1:pmin(6,ncol(.))) %>% rename(`Crop Type`='CropType')
+# 
+# #Figure of profit distributions
+# 
+# profitDat <- temp %>% filter(!is.na(Profit_ac)) %>% group_by(CropType) %>%
+#   mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $',round(median(Profit_ac)),'/ac, Marginal acres: ',round(100*mean(Profit_ac<0),1),'%')) 
+# 
+# profitFig <- profitDat %>%
+#   ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))+
+#   geom_histogram(binwidth=50)+
+#   facet_wrap(~CropType,scales='free_y')+
 #   geom_vline(xintercept = 0,col='red')+
-#   scale_y_continuous(labels = label_percent(), name = "Percent of acres") +
+#   scale_y_continuous(name = "Number of acres",breaks= pretty_breaks())+
 #   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
-
-#Other values to replace
-numFieldYears <- length(unique(temp$FieldYear))
-numCropTypes <- length(unique(temp$CropType))
-numYears <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
-  select(Year) %>% distinct() %>% nrow()
-percMargAc <- temp %>% filter(!is.na(Profit_ac)) %>% 
-  mutate(NegProf=Profit_ac<0) %>% 
-  pull(NegProf) %>% mean(.)*100
-percMargAc <- ifelse(percMargAc<1,'less than 1',as.character(round(percMargAc)))
-
-#Parameters for the report
-parList <- list(GROWERID='202201',
-                NUMFIELDYEARS=as.character(numFieldYears),
-                NUMCROPS=as.character(numCropTypes),NUMYEARS=as.character(numYears),
-                PERCMARGACRES=as.character(percMargAc),TABLEHERE=as.data.frame(yieldTable),
-                FIGUREHERE=profitFig)
-
-render('grower-report.Rmd',params = parList,
-       envir = new.env(),
-       # output_dir = './reports',
-       output_file = './reports/Clayton-Monchuk-test.pdf',clean = TRUE)
+# 
+# ##Older version
+# # profitFig <- profitDat %>% 
+# #   ggplot(aes(x=Profit_ac))+
+# #   geom_density(fill='grey90')+
+# #   facet_wrap(~CropType)+
+# #   geom_vline(xintercept = 0,col='red')+
+# #   scale_y_continuous(labels = label_percent(), name = "Percent of acres") +
+# #   labs(x='Profit ($/acre)',title='Predicted profit distribution during 2022')+theme_bw()
+# 
+# #Other values to replace
+# numFieldYears <- length(unique(temp$FieldYear))
+# numCropTypes <- length(unique(temp$CropType))
+# numYears <- temp %>% separate(FieldYear,c('Field','Year'),sep='_') %>% 
+#   select(Year) %>% distinct() %>% nrow()
+# percMargAc <- temp %>% filter(!is.na(Profit_ac)) %>% 
+#   mutate(NegProf=Profit_ac<0) %>% 
+#   pull(NegProf) %>% mean(.)*100
+# percMargAc <- ifelse(percMargAc<1,'less than 1',as.character(round(percMargAc)))
+# 
+# #Parameters for the report
+# parList <- list(GROWERID='202201',
+#                 NUMFIELDYEARS=as.character(numFieldYears),
+#                 NUMCROPS=as.character(numCropTypes),NUMYEARS=as.character(numYears),
+#                 PERCMARGACRES=as.character(percMargAc),TABLEHERE=as.data.frame(yieldTable),
+#                 FIGUREHERE=profitFig)
+# 
+# render('grower-report.Rmd',params = parList,
+#        envir = new.env(),
+#        # output_dir = './reports',
+#        output_file = './reports/Clayton-Monchuk-test.pdf',clean = TRUE)
 
 ##All growers
 
-setwd('./newsletter2023/')
-
 #Load list of growers
-growerDat <- # read.csv('./data/growerCSV.csv',strip.white = TRUE) %>% #Galpern
-  read.csv('../data/growerCSV.csv',strip.white = TRUE) %>% #Multivac
+growerDat <- read.csv('../data/growerCSV.csv',strip.white = TRUE) %>% #Multivac
   rename_with(~gsub('.','',.x,fixed = TRUE)) %>% 
   select(GrowerID:BusinessName) %>% 
   #Amalgamate first and last name if businessname is blank
   mutate(BusinessName=ifelse(is.na(BusinessName)|BusinessName=='',paste(FirstName,LastName),BusinessName)) %>% 
   mutate(BusinessName=gsub('\\.$','',BusinessName)) #Remove trailing periods
+
+#Get upper limits for different crops - using 99.9th percentile as overall upper bound
+uprYieldLim <- canProf[sapply(canProf,length)==4] %>% 
+  bind_rows(.id = 'grower') %>% 
+  filter(!is.na(Yield_buAc)) %>% 
+  group_by(CropType) %>% 
+  summarize(upr=ceiling(quantile(Yield_buAc,0.999)))
+            # upr1=quantile(Yield_buAc,0.99),
+            # upr2=quantile(Yield_buAc,0.98))
 
 # #Problem reports
 # 11: 202213 - canaryseed line has no info - not needed
@@ -225,7 +146,7 @@ growerDat <- # read.csv('./data/growerCSV.csv',strip.white = TRUE) %>% #Galpern
 
 # 31: 202241 - no data from 2022, only 2019/2018 - what should be put in place of the profit figure?
 
-for(i in 31:length(canProf)){
+for(i in 1:length(canProf)){
   if(class(canProf[[i]])=='logical') next
   
   gID <- sapply(str_split(names(canProf)[i],' '),first) %>% gsub('-.*','',.)
@@ -241,7 +162,9 @@ for(i in 31:length(canProf)){
   temp <- canProf[[i]] %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
     filter(!is.na(Yield_buAc)) %>% #Only non-NA yield
     arrange(desc(Year)) %>% 
-    filter(Year %in% unique(Year)[1:pmin(5,length(unique(Year)))])
+    filter(Year %in% unique(Year)[1:pmin(5,length(unique(Year)))]) %>% #Chooses 5 most recent years
+    left_join(uprYieldLim,by='CropType') %>%
+    filter(Yield_buAc<upr) %>% select(-upr) #BS filter
   
   #Table of summary yields 
   
@@ -373,6 +296,118 @@ for(i in 31:length(canProf)){
          clean = TRUE,quiet = TRUE)
   print(paste0('Finished report ',i,': grower ID ',gID))
 }
+
+
+# Overall yield ----------------------
+
+canProf <- canProf[sapply(canProf,length)==4] %>% 
+  bind_rows(.id = 'grower')
+
+#Some weird outliers
+canProf %>% filter(!is.na(Yield_buAc)) %>% 
+  ggplot(aes(x=Yield_buAc))+
+  geom_histogram()+facet_wrap(~CropType,scales='free')
+
+canProf %>% filter(!is.na(Yield_buAc)) %>% group_by(CropType) %>% 
+  summarize(upr=quantile(Yield_buAc,0.999),
+            upr1=quantile(Yield_buAc,0.99),
+            upr2=quantile(Yield_buAc,0.98))
+
+top6crop <- canProf %>% count(CropType) %>% 
+  arrange(desc(n)) %>% 
+  slice(1:6) %>% pull(CropType)
+
+canProf %>% filter(CropType %in% top6crop) %>% 
+  ggplot(aes(x=Yield_buAc))+geom_histogram()+
+  facet_wrap(~CropType,scales = 'free')
+
+#Weirdly large outliers
+
+canProf %>% filter(CropType=='Canola') %>% 
+  ggplot(aes(x=Yield_buAc))+geom_histogram()+
+  facet_wrap(~grower,scales = 'free')
+
+canProf %>% filter(CropType=='Oats') %>% 
+  ggplot(aes(x=Yield_buAc))+geom_histogram()+
+  facet_wrap(~grower,scales = 'free')
+
+canProf %>% filter(CropType=='Barley') %>% 
+  ggplot(aes(x=Yield_buAc))+geom_histogram()+
+  facet_wrap(~grower,scales = 'free')
+
+canProf %>% filter(CropType %in% top6crop) %>% 
+  group_by(grower,CropType) %>% summarize(upr=quantile(Yield_buAc,0.98)) %>% 
+  ggplot(aes(x=upr))+geom_histogram()+facet_wrap(~CropType,scales='free')
+
+
+
+
+# Overall profitability -----------------
+
+canProf <- canProf[sapply(canProf,length)==4] %>% 
+  bind_rows(.id = 'grower')
+
+#Canola profitability
+canProf %>% filter(CropType=='Canola') %>% 
+  ggplot()+geom_histogram(aes(x=Profit_ac))+
+  geom_vline(xintercept = 0,col='red')+
+  labs(x='Profit ($/acre)',y='Count')+
+  theme_classic()
+
+canProf%>% filter(CropType=='Canola') %>% 
+  ggplot(aes(x=Profit_ac)) +
+  stat_ecdf(geom = "step")+
+  # geom_hline(yintercept = 0.1,col='red')+
+  # coord_cartesian(xlim=c(NA,200),ylim=c(0,0.2))+
+  labs(x='Profit ($/acre)',y='Cumulative distribution')+
+  # scale_x_continuous(breaks = seq(-200,1200,50))+
+  # scale_y_continuous(breaks = seq(0,1,0.02))+
+  theme_bw()
+
+# Overall profitability
+canProf %>% ggplot()+geom_histogram(aes(x=Profit_ac))+
+  geom_vline(xintercept = 0,col='red')+
+  labs(x='Profit ($/acre)',y='Count')+
+  theme_classic()  
+
+canProf %>% ggplot(aes(x=Profit_ac)) + 
+  stat_ecdf(geom = "step")+
+  geom_hline(yintercept = 0.1,col='red')+
+  coord_cartesian(xlim=c(NA,1200))+
+  labs(x='Profit ($/acre)',y='Cumulative distribution')+
+  scale_x_continuous(breaks = seq(-200,1200,100))+
+  scale_y_continuous(breaks = seq(0,1,0.1))+
+  theme_bw()
+
+#Broken up by crop type
+top6crop <- canProf %>% count(CropType) %>% 
+  arrange(desc(n)) %>% 
+  slice(1:6) %>% pull(CropType)
+
+canProf %>% filter(CropType %in% top6crop) %>% 
+  group_by(CropType) %>% 
+  mutate(CropType=paste0(toupper(CropType),', Yield: ',round(median(Yield_buAc)),' bu/ac\nProfit: $/ac ',round(median(Profit_ac)),', Unprofitable acres: ',round(100*mean(Profit_ac<0),1),'%')) %>% 
+  ggplot()+geom_histogram(aes(x=Profit_ac),bins=30)+
+  facet_wrap(~CropType,scales='free')+
+  geom_vline(xintercept = 0,col='red')+
+  # geom_vline(data=)
+  labs(x='Profit ($/acre)',y='Count')+
+  theme_classic()  
+
+canProf %>% filter(CropType %in% top6crop) %>% 
+  group_by(CropType) %>% 
+  mutate(CropType=paste0(toupper(CropType),', Med $/ac: ',round(median(Profit_ac)),', % Unprofitable: ',round(100*mean(Profit_ac<0),2))) %>% 
+  ggplot(aes(x=Profit_ac,col=CropType)) + 
+  stat_ecdf(geom = "step")+
+  geom_vline(xintercept = 0,col='red')+
+  # coord_cartesian(xlim=c(NA,1200))+
+  labs(x='Profit ($/acre)',y='Cumulative distribution')+
+  coord_cartesian(xlim=c(NA,2000))+
+  # scale_x_continuous(breaks = seq(-200,1200,100))+
+  scale_y_continuous(breaks = seq(0,1,0.1))+
+  scale_colour_brewer(type = 'qual')+
+  theme_bw()
+
 
 
 # Other --------------------------
