@@ -5,7 +5,7 @@ source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
 
 unzipAll('D:\\geoData\\YieldStorageRaw\\202256 ABCO Farms/',rmOld = TRUE)
 
-dirPath <- "D:\\geoData\\SMSexport\\202259 HAYWIRE HILL LTD/"
+dirPath <- "D:\\geoData\\SMSexport\\202258 HLD HOLDINGS INC/"
 
 rename_csv(dirPath)
 # debugonce(rename_csv)
@@ -15,7 +15,7 @@ for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
   split_csv(l,TRUE)
 }
 debugonce(split_csv)
-split_csv('./202248 KLASSEN AGRIVENTURES/Schmidt.Maund 1_2022.csv',TRUE)
+split_csv('./S1.2 20-28-3 W2M_2022.csv',TRUE)
 
 #Merge fields that should be together
 # merge_csv('./SE.Can Sec 1_2022.csv','./Pivot W of 844_2022.csv','./SE.Can Sec 1B_2022.csv')
@@ -26,7 +26,8 @@ split_csv('./202248 KLASSEN AGRIVENTURES/Schmidt.Maund 1_2022.csv',TRUE)
 # debugonce(vegaFilter)
 
 #Single file
-clean_csv('./Dads_2018.csv','./clean/Dads_2018.csv','./clean/Dads_2015.png',useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
+clean_csv('./S1.2 20-28-3 W2M_2022.csv','./clean/S1.2 20-28-3 W2M_2022.csv','./clean/S1.2 20-28-3 W2M_2022.png',
+          useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
 
 #Single directory
 setwd(dirPath)
@@ -71,7 +72,9 @@ for(d in dirs){
 
 # Next step - rasterize yield data ----------------------------------------
 
-setwd("D:/geoData/SMSexport")
+if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
+  setwd("D:/geoData/SMSexport")
+}
 
 yDirs <- list.dirs('.',full.names = TRUE) #Yield directory
 yDirs <- yDirs[grepl('clean$',yDirs)]
@@ -96,10 +99,10 @@ for(i in 1:length(yDirs)){
  
 ##Single dir
 debugonce(rasterizeYield)
-rasterizeYield(yieldDir = "../202262 TRENT RICHARDS/clean",
+rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202258 HLD HOLDINGS INC\\clean",
                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
                # fieldFiltChar = "2022.csv$",
-               rastDir = "../202262 TRENT RICHARDS/rasters/", overwrite = FALSE)
+               rastDir = "D:\\geoData\\SMSexport\\202258 HLD HOLDINGS INC\\rasters", overwrite = FALSE)
 
 # Other things ------------------------------------------------------------
 debugonce(split_csv)

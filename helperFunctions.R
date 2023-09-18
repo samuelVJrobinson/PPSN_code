@@ -898,17 +898,27 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
             modMat <- model.matrix(~ Date_Combine + 0,data=dat) #Model matrix
             coefs <- coef(m1)[!grepl('s\\(',names(coef(m1)))] #Get coefficients
             
-            #Adjusted yield: subtracts combine/date, then adds back in an "average" combine/date effect
-            dat$Yield_tha <- dat$Yield_tha - (modMat %*% coefs)[,1] + mean(modMat %*% coefs) 
-            dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero 
-          },outFile = errPath)
+            #Maximum difference in size of coefficients
+            maxDiff <- max(abs(sapply(1:length(coefs),function(i,vec){ vec[i]/vec[-i]},vec=coefs)))
+            if(maxDiff>2){
+              stop(paste0('Large differences in estimated combine yield differences (',
+                          round(maxDiff,1),
+                          ' times). Is this from a single field or crop type?'))
+            }
+            
+          },outFile = errPath)  
           
           #If an error occurred during smoothing
           if(file.exists(errPath)){
             print(paste0('Error occurred during smoothing procedure for field ',
                          fieldName,'. Data (n = ',nrow(dat),') may be too sparse.'))
             next()
+          } else {
+            #Adjusted yield: subtracts combine/date, then adds back in an "average" combine/date effect
+            dat$Yield_tha <- dat$Yield_tha - (modMat %*% coefs)[,1] + mean(modMat %*% coefs) 
+            dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero   
           }
+          
         }
         
         #Aggregate data and write to raster
