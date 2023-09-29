@@ -692,7 +692,11 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
   # Read in boundary shp files for yield data 
   print(paste0('Reading boundary files: ',basename(boundPath)))
   
-  fieldBoundaries <- read_sf(boundPath) %>% 
+  fieldBoundaries <- read_sf(boundPath) 
+  
+  if(is.na(st_crs(fieldBoundaries))) stop('CRS for boundary polygons not defined')
+  
+  fieldBoundaries <- fieldBoundaries %>% 
     dplyr::select(matches('(Field|^y20\\d{2}$)')) %>% #Select only 
     mutate(Field=gsub('(/|_)','.',Field)) %>% #Replace forwardslash and underscore
     st_make_valid() %>% #Fix geometry if needed

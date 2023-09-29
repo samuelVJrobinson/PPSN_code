@@ -79,11 +79,9 @@ uprYieldLim <- canProf[sapply(canProf,length)==4] %>%
             # upr2=quantile(Yield_buAc,0.98))
 
 # #Problem reports
-# 11: 202213 - canaryseed line has no info - not needed
-# 14: 202217 - issue with profit distribution maps
-# 18: 202221 - fababean line has no info - not needed
 
-# 31: 202241 - no data from 2022, only 2019/2018 - what should be put in place of the profit figure?
+#202217: chickpeas have poor profits, but grower says otherwise
+# - Field =  M&M Wade: yield data says "Peas", Satellite data says "Chickpeas (66%) or Lentils (27%) ", Metadata says "Canola, Peas, Spring Wheat"
 
 for(i in 1:length(canProf)){
   if(class(canProf[[i]])=='logical') next

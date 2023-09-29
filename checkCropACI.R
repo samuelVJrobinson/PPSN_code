@@ -18,7 +18,7 @@ mkMap <- function(path){ #Make simple maps of shapefiles
 }
 
 for(i in 1:length(bFiles)){
-  cropTypeACI(bFiles[i])
+  cropTypeACI(bFiles[i]) #Read and check boundary polygons
 }
 
 for(i in 1:length(bFiles)){ #Make simple maps
