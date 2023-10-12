@@ -1,5 +1,5 @@
 #Written to convert custom shapefiles from growers
-
+setwd("D:/geoData/SMSexport/PPSN_code")
 source("./helperFunctions.R")
 library(tidyverse)
 library(sf)
@@ -7,9 +7,6 @@ library(sf)
 #Template
 
 # Longitude	Latitude Grower	#Field	#Date_ymd	#Year	#Crop	#Variety	CombineID	Distance_m	Track_deg	Duration_s	Elevation_m	SwathWidth_m	Moisture_perc	Yield_tha	Speed_kmh	Fuel_L
-# -117.8436917	56.10191291	202236 REBELLION FARMS	44 acres	2021-09-21	2021	Canola	234	1H0S690SCD0765043	0.605	0.641	1	646.46	12.19	4.24	1.762	2.179	0
-# -117.8436914	56.10191976	202236 REBELLION FARMS	44 acres	2021-09-21	2021	Canola	234	1H0S690SCD0765043	0.765	0.921	1	646.47	12.19	4.24	1.961	2.755	0
-# -117.8436913	56.10192675	202236 REBELLION FARMS	44 acres	2021-09-21	2021	Canola	234	1H0S690SCD0765043	0.775	0.911	1	646.47	12.19	4.24	1.82	2.791	0
 
 # 202216 ZENNETH FAYE - DONE --------------------------
 
@@ -34,7 +31,7 @@ for(path in fps){
                 CombineID=paste(imp_make,imp_model,imp_name,sep='-'),
                 Distance_m=interval_m,Track_deg=direction,Duration_s=interval_s,Elevation_m=elev_m,
                 SwathWidth_m=width_m,Moisture_perc=`moisture_%`,
-                Yield_tha=`rate_kg/ha`/1000,Fuel_L=`fuel_L/ha`) %>% 
+                Yield_tha=`rate_kg/ha`/1000,Speed_kmh = speed_kph,Fuel_L=`fuel_L/ha`) %>% 
       filter(!is.na(Yield_tha),Distance_m!=0,!is.na(Distance_m)) %>% 
       mutate(Yield_tha=ifelse(Yield_tha==0,0.01,Yield_tha)) %>% 
       write.csv(file=paste0(writeDir,'\\',fname,'_',unique(.$Year),'.csv'),row.names=FALSE)  
@@ -95,14 +92,14 @@ for(path in fps){
               Distance_m=interval_m,Track_deg=direction,Duration_s=interval_s,
               Elevation_m=elev_m,SwathWidth_m=width_m,
               Moisture_perc=`moisture_%`,Yield_tha=`rate_kg/ha`/1000,
-              Fuel_L=`fuel_L/ha`) %>% 
+              Speed_kmh = speed_kph,Fuel_L=`fuel_L/ha`) %>% 
     filter(!is.na(Yield_tha),Distance_m!=0,!is.na(Distance_m)) %>% 
     mutate(Yield_tha=ifelse(Yield_tha==0,0.01,Yield_tha)) %>% 
     write.csv(file=paste0(writeDir,'\\',fname,'_',unique(.$Year),'.csv'),row.names=FALSE)  
   
 }
 
-# 202262 DAVID FORSEILLE ------------------------
+# 202261 DAVID FORSEILLE - DONE ------------------------
 
 readDir <- "D:\\geoData\\YieldStorageRaw\\202261 David Forseille/202261 Yield Data Files 2021 2022/"
 writeDir <- "D:\\geoData\\SMSexport\\202261 DAVID FORSEILLE"
@@ -145,16 +142,19 @@ for(path in fps){
     mutate(Grower="202262 DAVID FORSEILLE",Field=fname) %>%
     mutate(IsoTime =as.POSIXlt(IsoTime,format='%FT%H:%M:%S')) %>% 
     mutate(Date_ymd=format(IsoTime,format='%F'),Year=format(IsoTime,format='%Y')) %>% 
+    mutate(Duration_s=as.numeric(difftime(IsoTime,lag(IsoTime),units = 'secs'))) %>% 
+    mutate(Duration_s=ifelse((is.na(Duration_s)|Duration_s==0),mean(Duration_s,na.rm=TRUE),Duration_s)) %>% 
+    mutate(speed=3.6*DISTANCE/Duration_s) %>% 
     transmute(Longitude,Latitude,Grower,Field,Date_ymd,Year,Crop=cropName,Variety=VARIETY,
               CombineID=Machine,
               Distance_m=DISTANCE ,Track_deg=Heading,
-              Duration_s=1, #difftime(IsoTime,lag(IsoTime),units = 'secs'),
+              Duration_s=Duration_s,
               Elevation_m=Elevation/3.28084, #Originally in feet
               SwathWidth_m=SWATHWIDTH,Moisture_perc=Moisture,
               Yield_tha=(WetMass*lbsAc2tha)*(1-Moisture_perc/100)/(1-DryMoisture_perc/100),
-              Fuel_L=NA,geometry=geometry) %>% 
+              Speed_kmh = speed, Fuel_L=NA) %>% 
     filter(!is.na(Yield_tha),Distance_m!=0,!is.na(Distance_m)) %>% 
-    mutate(Yield_tha=ifelse(Yield_tha==0,0.01,Yield_tha)) %>%
+    mutate(Yield_tha=ifelse(Yield_tha==0,0.01,Yield_tha)) %>% st_drop_geometry() %>% 
     write.csv(file=paste0(writeDir,'\\',fname,'_',unique(.$Year),'.csv'),row.names=FALSE)
 }
 
@@ -164,3 +164,24 @@ for(path in fps){
 # -117.8436914	56.10191976	202236 REBELLION FARMS	44 acres	2021-09-21	2021	Canola	234	1H0S690SCD0765043	0.765	0.921	1	646.47	12.19	4.24	1.961	2.755	0
 # -117.8436913	56.10192675	202236 REBELLION FARMS	44 acres	2021-09-21	2021	Canola	234	1H0S690SCD0765043	0.775	0.911	1	646.47	12.19	4.24	1.82	2.791	0
 
+
+
+# Process all dirs --------------------------
+
+dirs <- dir('D:\\geoData\\SMSexport\\','(202216|202230|202244|202261)',include.dirs = TRUE,full.names = TRUE)
+
+for(d in dirs){
+  setwd(d)
+  for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
+    p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
+    p2 <- gsub('csv$','png',p1) #png writing path
+    if(file.exists(p1)){
+      print(paste0(gsub('./','',l),' already processed. Skipping.'))
+    } else {
+      try({
+        clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12,speedR2thresh = 0.9)
+      },outFile =gsub('.csv','_ERROR.txt',basename(l)))
+      gc(FALSE)
+    } 
+  }  
+}

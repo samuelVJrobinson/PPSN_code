@@ -309,7 +309,18 @@ vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=
   return(ret)
 }
 
-clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPath=NULL,useVega=TRUE,keepFiltCols=FALSE,ncore=1,fastRead=TRUE){
+# newpath=NULL : path for cleaned csv to be written
+# figpath=NULL : path for figures to be written
+# upperYield=NULL : upper bound on yield (t/ha)
+# boundaryPath=NULL : boundary shapefile (optional)
+# useVega=TRUE : use Vega spatial inlier filter?
+# keepFiltCols=FALSE : keep filter columns?
+# ncore=1 : number of cores to use in processing
+# fastRead=TRUE: use "fast" read/write csv commands?
+# speedR2thresh = 0.95: R2 threshold for speed-distance correlation models used to fill in speed gaps (lower than this, and model will quit)
+
+clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPath=NULL,useVega=TRUE,keepFiltCols=FALSE,ncore=1,fastRead=TRUE,
+                      speedR2thresh=0.95){
   library(tidyverse)
   library(sf)
   if(ncore>1){
@@ -332,7 +343,11 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   
   #Filter differences in track angles 
   bearingFilter <- function(bearing,q=NULL,z=NULL,returnDiffs=FALSE){
-    if(!xor(is.null(q),is.null(z))&!returnDiffs) stop('Input quantiles or Z-score')
+    if(!xor(is.null(q),is.null(z))&!returnDiffs){
+      stop('Input quantiles or Z-score')
+    } else if(sum(is.na(bearing))==length(bearing)){
+      stop('No bearings (track angles) found')
+    }
     #Difference in compass bearings (in degrees)
     bearingDiff <- function(x1,x2){
       x <- x1-x2
@@ -532,16 +547,13 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
       
       speedMod <- lm(Speed_kmh ~ predSpeed,data=tempDat)
       
-      if(summary(speedMod)$r.squared<0.95){
-        stop('Bad speed predictions from Distance/Duration (R2<0.95)')
-      }
-      
       if(is.null(figpath)){
         figpath2 <- gsub('\\.csv$','_speedMod.png',newpath)
       } else {
         figpath2 <- gsub('\\.[a-z]{3}$','_speedMod.png',figpath)
       }
-      #Make figure
+      
+      #Make speed-distance figure
       png(figpath2,width=10, height=10, units = 'in', res = 200)
       plot(predSpeed~Speed_kmh,data=tempDat,xlab='Actual Speed (km/h)',
            ylab='Predicted Speed (km/h)',pch=19)
@@ -549,10 +561,15 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
       plotText <- paste0('y ~ ',round(coef(speedMod)[1],2),'+ ',
                          round(coef(speedMod)[2],2),'x\nR^2 = ', 
                          round(summary(speedMod)$r.squared,3),
-                         '\nMAE = ',round(mean(abs(residuals(speedMod))),3))
+                         '\nMAE = ',round(mean(abs(residuals(speedMod))),3),
+                         '\nNumber of points filled in = ',nSpeedMiss)
       text(x=max(tempDat$Speed_kmh)*0.15,y=max(tempDat$predSpeed)*0.9,plotText)
       dev.off()
       figPath <- NULL
+      
+      if(summary(speedMod)$r.squared<speedR2thresh){
+        stop(paste0('Bad speed predictions from Distance/Duration (R2<',speedR2thresh,')'))
+      }
       
       #Fills in missing speed measurements
       dat <- dat %>% mutate(predSpeed=3.6*Distance_m/Duration_s) %>% 

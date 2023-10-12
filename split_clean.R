@@ -5,7 +5,7 @@ source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
 
 unzipAll('D:\\geoData\\YieldStorageRaw\\202256 ABCO Farms/',rmOld = TRUE)
 
-dirPath <- "D:\\geoData\\SMSexport\\202258 HLD HOLDINGS INC/"
+dirPath <- "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK/"
 
 rename_csv(dirPath)
 # debugonce(rename_csv)
@@ -26,10 +26,12 @@ split_csv('./S1.2 20-28-3 W2M_2022.csv',TRUE)
 # debugonce(vegaFilter)
 
 #Single file
-clean_csv('./S1.2 20-28-3 W2M_2022.csv','./clean/S1.2 20-28-3 W2M_2022.csv','./clean/S1.2 20-28-3 W2M_2022.png',
+fn <- 'Aaron east mini_2017'
+clean_csv('./Aaron east mini_2017.csv','./clean/Aaron east mini_2017.csv','./clean/Aaron east mini_2017.png',
           useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
 
 #Single directory
+dirPath <- "D:\\geoData\\SMSexport\\202216 ZENNETH FAYE"
 setwd(dirPath)
 for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
   p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
@@ -69,6 +71,23 @@ for(d in dirs){
   }  
 }
 
+#Files in directory with ERROR files
+setwd(dirPath)
+fp <- gsub('_ERROR.txt','.csv',list.files('.',pattern='*ERROR*',full.names = TRUE))
+for(l in fp){
+  p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
+  p2 <- gsub('csv$','png',p1) #png writing path
+  split_csv(l,FALSE) #Split files
+  if(file.exists(p1)){
+    print(paste0(gsub('./','',l),' already processed. Skipping.'))
+  } else {
+    try({
+      clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
+    },
+    outFile =gsub('.csv','_ERROR.txt',basename(l)))
+    gc(FALSE)
+  }
+}
 
 # Next step - rasterize yield data ----------------------------------------
 
@@ -99,10 +118,10 @@ for(i in 1:length(yDirs)){
  
 ##Single dir
 debugonce(rasterizeYield)
-rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202258 HLD HOLDINGS INC\\clean",
+rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK\\clean",
                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
                # fieldFiltChar = "2022.csv$",
-               rastDir = "D:\\geoData\\SMSexport\\202258 HLD HOLDINGS INC\\rasters", overwrite = FALSE)
+               rastDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK\\rasters", overwrite = FALSE)
 
 # Other things ------------------------------------------------------------
 debugonce(split_csv)
