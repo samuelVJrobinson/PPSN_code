@@ -1,15 +1,17 @@
-CropType,Bu_t
-Oats,64.8
-Canola,44.092
-Barley,45.9
-Rye,39.368
-Spring Wheat,36.744
-Mustard,44.092
-Lentils,36.744
-Peas,36.744
-Soybeans,36.744
-Flaxseed,39.368
-Winter Wheat,36.744
-Durum,36.744
-Chickpeas,36.744
-Corn,39.368
+CropType,Bu_t,DryMoisture_perc
+Oats,64.8,10
+Canola,42.4,6.6
+Barley,45.9,10
+Rye,39.368,9.7
+Spring Wheat,36.744,9.8
+Mustard,42.4,6.6
+Lentils,36.744,13
+Peas,36.744,10
+Soybeans,36.744,7
+Flaxseed,39.368,7
+Winter Wheat,36.744,9.8
+Durum,36.744,9.8
+Chickpeas,38.34851351,14
+Canaryseed,44.0924,13
+Fababeans,34.8195092,12.5
+Blow Out,NA,NA

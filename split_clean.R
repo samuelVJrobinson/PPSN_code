@@ -1,11 +1,11 @@
 # source("/media/rsamuelStorage1/geoData/SMSexport/helperFunctions.R")
-source("D:\\geoData\\SMSexport\\helperFunctions.R")
+source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
 
 # Basic operations - unzip and process csv ----------------------------------------
 
 unzipAll('D:\\geoData\\YieldStorageRaw\\202256 ABCO Farms/',rmOld = TRUE)
 
-dirPath <- "D:\\geoData\\SMSexport\\202231 HILLSBORO FARMS/"
+dirPath <- "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK/"
 
 rename_csv(dirPath)
 # debugonce(rename_csv)
@@ -14,7 +14,8 @@ rename_csv(dirPath)
 for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
   split_csv(l,TRUE)
 }
-# debugonce(split_csv)
+debugonce(split_csv)
+split_csv('./S1.2 20-28-3 W2M_2022.csv',TRUE)
 
 #Merge fields that should be together
 # merge_csv('./SE.Can Sec 1_2022.csv','./Pivot W of 844_2022.csv','./SE.Can Sec 1B_2022.csv')
@@ -24,7 +25,13 @@ for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
 # debugonce(clean_csv)
 # debugonce(vegaFilter)
 
+#Single file
+fn <- 'Aaron east mini_2017'
+clean_csv('./Aaron east mini_2017.csv','./clean/Aaron east mini_2017.csv','./clean/Aaron east mini_2017.png',
+          useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
+
 #Single directory
+dirPath <- "D:\\geoData\\SMSexport\\202216 ZENNETH FAYE"
 setwd(dirPath)
 for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
   p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
@@ -64,10 +71,29 @@ for(d in dirs){
   }  
 }
 
+#Files in directory with ERROR files
+setwd(dirPath)
+fp <- gsub('_ERROR.txt','.csv',list.files('.',pattern='*ERROR*',full.names = TRUE))
+for(l in fp){
+  p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
+  p2 <- gsub('csv$','png',p1) #png writing path
+  split_csv(l,FALSE) #Split files
+  if(file.exists(p1)){
+    print(paste0(gsub('./','',l),' already processed. Skipping.'))
+  } else {
+    try({
+      clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
+    },
+    outFile =gsub('.csv','_ERROR.txt',basename(l)))
+    gc(FALSE)
+  }
+}
 
 # Next step - rasterize yield data ----------------------------------------
 
-setwd("D:/geoData/SMSexport")
+if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
+  setwd("D:/geoData/SMSexport")
+}
 
 yDirs <- list.dirs('.',full.names = TRUE) #Yield directory
 yDirs <- yDirs[grepl('clean$',yDirs)]
@@ -90,16 +116,12 @@ for(i in 1:length(yDirs)){
   gc()
 }
  
-
-
 ##Single dir
 debugonce(rasterizeYield)
-rasterizeYield(yieldDir = "./202231 HILLSBORO FARMS/clean/",
+rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK\\clean",
                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
                # fieldFiltChar = "2022.csv$",
-               rastDir = "./202231 HILLSBORO FARMS/rasters", overwrite = FALSE)
- 
-
+               rastDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK\\rasters", overwrite = FALSE)
 
 # Other things ------------------------------------------------------------
 debugonce(split_csv)

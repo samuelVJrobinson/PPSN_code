@@ -18,7 +18,7 @@ mkMap <- function(path){ #Make simple maps of shapefiles
 }
 
 for(i in 1:length(bFiles)){
-  cropTypeACI(bFiles[i])
+  cropTypeACI(bFiles[i]) #Read and check boundary polygons
 }
 
 for(i in 1:length(bFiles)){ #Make simple maps
@@ -35,7 +35,7 @@ for(i in 1:length(bFiles)){ #Make simple maps
 debugonce(cropTypeACI)
 # cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries/202234 LEGUEE FARMS_poly.shp")  
 # cropTypeACI(bFiles[3],addNewFields = "C:\\Users\\samuel.robinson\\Desktop\\202203 DAVE HOFER 2_poly.shp")
-cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries\\202212 202 AGVENTURES_poly.shp")
+cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries\\202227 CHERNESKI LAND AND CATTLE_poly.shp")
 
 #Check for duplicate fields within shapefiles
 

@@ -309,7 +309,18 @@ vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=
   return(ret)
 }
 
-clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPath=NULL,useVega=TRUE,keepFiltCols=FALSE,ncore=1,fastRead=TRUE){
+# newpath=NULL : path for cleaned csv to be written
+# figpath=NULL : path for figures to be written
+# upperYield=NULL : upper bound on yield (t/ha)
+# boundaryPath=NULL : boundary shapefile (optional)
+# useVega=TRUE : use Vega spatial inlier filter?
+# keepFiltCols=FALSE : keep filter columns?
+# ncore=1 : number of cores to use in processing
+# fastRead=TRUE: use "fast" read/write csv commands?
+# speedR2thresh = 0.95: R2 threshold for speed-distance correlation models used to fill in speed gaps (lower than this, and model will quit)
+
+clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPath=NULL,useVega=TRUE,keepFiltCols=FALSE,ncore=1,fastRead=TRUE,
+                      speedR2thresh=0.95){
   library(tidyverse)
   library(sf)
   if(ncore>1){
@@ -332,7 +343,11 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   
   #Filter differences in track angles 
   bearingFilter <- function(bearing,q=NULL,z=NULL,returnDiffs=FALSE){
-    if(!xor(is.null(q),is.null(z))&!returnDiffs) stop('Input quantiles or Z-score')
+    if(!xor(is.null(q),is.null(z))&!returnDiffs){
+      stop('Input quantiles or Z-score')
+    } else if(sum(is.na(bearing))==length(bearing)){
+      stop('No bearings (track angles) found')
+    }
     #Difference in compass bearings (in degrees)
     bearingDiff <- function(x1,x2){
       x <- x1-x2
@@ -532,16 +547,13 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
       
       speedMod <- lm(Speed_kmh ~ predSpeed,data=tempDat)
       
-      if(summary(speedMod)$r.squared<0.95){
-        stop('Bad speed predictions from Distance/Duration (R2<0.95)')
-      }
-      
       if(is.null(figpath)){
         figpath2 <- gsub('\\.csv$','_speedMod.png',newpath)
       } else {
         figpath2 <- gsub('\\.[a-z]{3}$','_speedMod.png',figpath)
       }
-      #Make figure
+      
+      #Make speed-distance figure
       png(figpath2,width=10, height=10, units = 'in', res = 200)
       plot(predSpeed~Speed_kmh,data=tempDat,xlab='Actual Speed (km/h)',
            ylab='Predicted Speed (km/h)',pch=19)
@@ -549,10 +561,15 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
       plotText <- paste0('y ~ ',round(coef(speedMod)[1],2),'+ ',
                          round(coef(speedMod)[2],2),'x\nR^2 = ', 
                          round(summary(speedMod)$r.squared,3),
-                         '\nMAE = ',round(mean(abs(residuals(speedMod))),3))
+                         '\nMAE = ',round(mean(abs(residuals(speedMod))),3),
+                         '\nNumber of points filled in = ',nSpeedMiss)
       text(x=max(tempDat$Speed_kmh)*0.15,y=max(tempDat$predSpeed)*0.9,plotText)
       dev.off()
       figPath <- NULL
+      
+      if(summary(speedMod)$r.squared<speedR2thresh){
+        stop(paste0('Bad speed predictions from Distance/Duration (R2<',speedR2thresh,')'))
+      }
       
       #Fills in missing speed measurements
       dat <- dat %>% mutate(predSpeed=3.6*Distance_m/Duration_s) %>% 
@@ -692,7 +709,11 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
   # Read in boundary shp files for yield data 
   print(paste0('Reading boundary files: ',basename(boundPath)))
   
-  fieldBoundaries <- read_sf(boundPath) %>% 
+  fieldBoundaries <- read_sf(boundPath) 
+  
+  if(is.na(st_crs(fieldBoundaries))) stop('CRS for boundary polygons not defined')
+  
+  fieldBoundaries <- fieldBoundaries %>% 
     dplyr::select(matches('(Field|^y20\\d{2}$)')) %>% #Select only 
     mutate(Field=gsub('(/|_)','.',Field)) %>% #Replace forwardslash and underscore
     st_make_valid() %>% #Fix geometry if needed
@@ -832,9 +853,9 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
   
   boundPaths <- list.files(boundDir,pattern="*\\.shp$",full.names = TRUE) #Get all shp paths
   fID <- regmatches(yieldDir,regexpr("2022[0-9]{2}",yieldDir)) #Farmer ID #
-  # gsub("( .*\\clean$|^.*)","",yieldDir) 
+  if(length(fID)!=1) stop(paste0('No farmer IDs found matching ',yieldDir))
   bPath <- boundPaths[grepl(fID,boundPaths)] #Path for boundary shape files
-  if(length(fID)!=1 | length(bPath)!=1) stop('Error in farmer ID matching:\nfID: ',fID,'\nboundary path: ',bPath)
+  if(length(bPath)!=1) stop(paste0('No boundary paths found matching farmer ID ',fID))
   
   #Check if folder has already been processed
   if(!any(!file.exists(file.path(rastDir,gsub('.csv$','.tif',basename(filePaths)))))){
@@ -898,17 +919,27 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
             modMat <- model.matrix(~ Date_Combine + 0,data=dat) #Model matrix
             coefs <- coef(m1)[!grepl('s\\(',names(coef(m1)))] #Get coefficients
             
+            #Maximum difference in size of coefficients
+            maxDiff <- max(abs(sapply(1:length(coefs),function(i,vec){ vec[i]/vec[-i]},vec=coefs)))
+            if(maxDiff>2){
+              stop(paste0('Large differences in estimated combine yield differences (',
+                          round(maxDiff,1),
+                          ' times). Is this from a single field or crop type?'))
+            }
+            
+          },outFile = errPath)  
+          
+          #If an error occurred during smoothing
+          if(file.exists(errPath)){
+            print(paste0('Error occurred during smoothing procedure for field ',
+                         fieldName,'. Data (n = ',nrow(dat),') may be too sparse.'))
+            next()
+          } else {
             #Adjusted yield: subtracts combine/date, then adds back in an "average" combine/date effect
             dat$Yield_tha <- dat$Yield_tha - (modMat %*% coefs)[,1] + mean(modMat %*% coefs) 
-            dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero 
-          },outFile = errPath)
-        }
-        
-        #If an error occurred during smoothing
-        if(file.exists(errPath)){
-          print(paste0('Error occurred during smoothing procedure for field ',
-                       fieldName,'. Data (n = ',nrow(dat),') may be too sparse.'))
-          next()
+            dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero   
+          }
+          
         }
         
         #Aggregate data and write to raster
@@ -942,11 +973,11 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
 profEstimates <- function(rastDir = NULL,
                           soilMapPath = "D:\\geoData\\Shapefiles\\Soil Layers\\PRV_SZ_PDQ_v6.shp",
                           boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
-                          cropPrices = "D:\\geoData\\SMSexport\\cropPricesCSV.csv",
+                          cropPrices = "D:\\geoData\\SMSexport\\PPSN_code\\data\\cropPricesCSV.csv",
                           # retDat = FALSE, #Return dataframe or plot?
                           includeYield = FALSE, #Include yield data along with profit?
                           useAcres = FALSE, #Convert yield to bu/acre - requires bulkDens.csv if not listed in cropPrices
-                          bulkDens = "D:\\geoData\\SMSexpor\\cropBulkDensity.csv",
+                          bulkDens = "D:\\geoData\\SMSexport\\PPSN_code\\data\\cropBulkDensity.csv",
                           excludeMissing = FALSE){ #Warn about missing econ data, or exclude?
   
   # #Debugging
@@ -972,11 +1003,12 @@ profEstimates <- function(rastDir = NULL,
     separate(fieldYr,c('Field','Year'),sep='_',remove = FALSE) %>% 
     mutate(Year=as.numeric(Year))
   
-  growerID <- basename(gsub(basename(rastDir),'',rastDir))
+  if(nrow(rastPaths)==0){
+    warning(paste0('No raster files found in ',rastDir))
+    return(NA)
+  }
   
-  #Get provincial/soil zones
-  soilProv <- read_sf(soilMapPath) %>% #st_transform(st_crs(bPoly)) %>% 
-    group_by(SoilZone,Prov) %>% summarize(do_union = TRUE,.groups = "keep") %>% ungroup()
+  growerID <- basename(gsub(basename(rastDir),'',rastDir))
   
   #Get field boundary polygons with crop type
   bFiles <- list.files(boundDir,pattern = '*.shp$',full.names = TRUE)
@@ -989,17 +1021,31 @@ profEstimates <- function(rastDir = NULL,
   
   bPoly <- st_read(bFiles,quiet=TRUE) %>% 
     mutate(across(matches('^y'),~gsub('_.*$','',.x))) %>% #Gets most-dominant cover type
-    mutate(across(matches('^y'),~ifelse(.x=='NonCrop',NA,.x))) %>% 
-    st_join(st_transform(soilProv,st_crs(.))) 
+    mutate(across(matches('^y'),~ifelse(.x=='NonCrop',NA,.x)))
+  
+  #Get provincial/soil zones
+  soilProv <- read_sf(soilMapPath) %>%  
+    group_by(SoilZone,Prov) %>% summarize(do_union = TRUE,.groups = "keep") %>% 
+    ungroup() %>% st_transform(st_crs(bPoly)) 
+  
+  bPoly <- bPoly %>% st_join(soilProv) 
   
   noSoil <- is.na(bPoly$SoilZone)|is.na(bPoly$Prov) #Fields not overlapping soil polygons
   
   if(any(noSoil)){
     badDat <- st_drop_geometry(bPoly) %>% filter(noSoil) %>% 
       transmute(Field,` `="...",y2021,y2022,SoilZone,Prov)
-    warning('Some fields did not overlap soil polygons and were removed: \n',
+    warning('Some fields did not overlap soil polygons and were matched with nearby polygons: \n',
             paste(capture.output(print(badDat)), collapse = "\n"))
-    bPoly <- bPoly %>% filter(!noSoil)
+    # bPoly <- bPoly %>% filter(!noSoil)
+    
+    bPoly$SoilZone[noSoil] <- soilProv$SoilZone[
+      st_nearest_feature(st_centroid(st_geometry(bPoly))[noSoil],soilProv)
+    ]
+    
+    bPoly$Prov[noSoil] <- soilProv$Prov[
+      st_nearest_feature(st_centroid(st_geometry(bPoly))[noSoil],soilProv)
+    ]
   }
   
   bPoly <- bPoly %>% pivot_longer(matches('^y20'),names_to='Year',values_to='CropType') %>% 
@@ -1043,7 +1089,7 @@ profEstimates <- function(rastDir = NULL,
     bd <- read.csv(bulkDens) %>% rename('Bu_t2'='Bu_t')
     missingBDcrops <- rastPaths$CropType[is.na(rastPaths$Bu_t)] 
     if(any(!missingBDcrops %in% bd$CropType)){
-      badCrops <- paste0(missingBDcrops[!missingBDcrops %in% bd$CropType],collapse=', ')
+      badCrops <- paste0(unique(missingBDcrops[!missingBDcrops %in% bd$CropType]),collapse=', ')
       warning(paste0('Some crop types were not found in bulk density csv:\n',badCrops
       ))
     }
@@ -1090,19 +1136,5 @@ profEstimates <- function(rastDir = NULL,
                      rp=rastPaths,inclYld=includeYield,acres=useAcres) %>%
     set_names(nm = rastPaths$fieldYr) %>% 
     bind_rows(.id='FieldYear')
-  
-  # if(retDat){ #ggplot image
-  #   return(profCalc)
-  # } else {
-  #   p1 <- profCalc %>% mutate(Profit_ac=Profit_ha/ha2ac) %>% 
-  #     group_by(CropType) %>% 
-  #     mutate(CropType=paste0(toupper(CropType),', Med $/ac: ',round(median(Profit_ac)),', % Unprofitable: ',round(100*mean(Profit_ac<0),2))) %>% 
-  #     ggplot()+geom_histogram(aes(x=Profit_ac),bins=30)+
-  #     facet_wrap(~CropType,scales='free')+
-  #     geom_vline(xintercept = 0,col='red')+
-  #     labs(x='Profit ($/acre)',y='Count')+
-  #     theme_classic()  
-  #   return(p1)
-  # }
 }
 

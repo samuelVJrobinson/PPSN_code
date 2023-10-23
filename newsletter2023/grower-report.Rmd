@@ -46,7 +46,7 @@ knitr::opts_chunk$set(echo = FALSE)
 <!-- \end{center} -->
 <!-- \noindent -->
 <!-- \includegraphics[width=\paperwidth]{./PPSNnewsletter_Jul4.pdf} -->
-\includepdf[pages=-]{PPSNnewsletter_Jul11.pdf}
+\includepdf[pages=-]{PPSNnewsletter_Aug24.pdf}
 \pagebreak
 
 \begin{tikzpicture}[remember picture,overlay]
@@ -96,10 +96,14 @@ You supplied the project with:
   \item `r params$NUMYEARS` years of data
 \end{itemize}
 
-Quick Facts about your data:
-\begin{itemize}
-  \item In 2022 `r params$PERCMARGACRES`\% of total acres were marginal (less than \$0 profit/acre)
-\end{itemize}
+
+```{r percMarg, eval = !is.na(params$PERCMARGACRES), echo=FALSE, results='asis'} 
+cat("Quick facts about your data")
+cat("\\begin{itemize}")
+cat(paste0("\\item In 2022, ",params$PERCMARGACRES,"\\% of total acres were marginal (less than \\$0 profit/acre)."))
+cat("\\end{itemize}")
+```
+
 
 \columnbreak
 
@@ -127,7 +131,7 @@ params$TABLEHERE %>%
 
 \end{multicols}
 
-```{r profFigure, fig.height=4, fig.width=7.5}
+```{r profFigure, fig.height=4, fig.width=7.5, warning=FALSE, message=FALSE}
   
   # print('FIGUREHERE')
   params$FIGUREHERE
