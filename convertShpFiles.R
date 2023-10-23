@@ -39,7 +39,7 @@ for(path in fps){
   # } else print(paste0(fname,' already exists'))
 }
 
-# 202230 HANSBREK FARMS - DONE ----------------------
+# 202230 HANSBREK FARMS - MISSING BEARING ----------------------
 
 readDir <- "D:\\geoData\\YieldStorageRaw\\202230 Hansbrek Farms Inc\\crop study"
 writeDir <- "D:\\geoData\\SMSexport\\202230 HANSBREK FARMS LTD"
@@ -168,7 +168,7 @@ for(path in fps){
 
 # Process all dirs --------------------------
 
-dirs <- dir('D:\\geoData\\SMSexport\\','(202216|202230|202244|202261)',include.dirs = TRUE,full.names = TRUE)
+dirs <- dir('D:\\geoData\\SMSexport\\','(202216|202244|202261)',include.dirs = TRUE,full.names = TRUE)
 
 for(d in dirs){
   setwd(d)
@@ -184,4 +184,17 @@ for(d in dirs){
       gc(FALSE)
     } 
   }  
+}
+
+#Rasterize yield
+
+yDirs <- paste0(dirs,'\\clean')
+rDirs <- gsub('clean$','rasters',yDirs) #Raster directory
+
+for(i in 1:length(yDirs)){
+    rasterizeYield(yieldDir = yDirs[i],
+                   boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
+                   # fieldFiltChar = "2022.csv$",
+                   rastDir = rDirs[i], overwrite = FALSE)  
+  gc()
 }

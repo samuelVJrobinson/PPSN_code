@@ -853,9 +853,9 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
   
   boundPaths <- list.files(boundDir,pattern="*\\.shp$",full.names = TRUE) #Get all shp paths
   fID <- regmatches(yieldDir,regexpr("2022[0-9]{2}",yieldDir)) #Farmer ID #
-  # gsub("( .*\\clean$|^.*)","",yieldDir) 
+  if(length(fID)!=1) stop(paste0('No farmer IDs found matching ',yieldDir))
   bPath <- boundPaths[grepl(fID,boundPaths)] #Path for boundary shape files
-  if(length(fID)!=1 | length(bPath)!=1) stop('Error in farmer ID matching:\nfID: ',fID,'\nboundary path: ',bPath)
+  if(length(bPath)!=1) stop(paste0('No boundary paths found matching farmer ID ',fID))
   
   #Check if folder has already been processed
   if(!any(!file.exists(file.path(rastDir,gsub('.csv$','.tif',basename(filePaths)))))){
