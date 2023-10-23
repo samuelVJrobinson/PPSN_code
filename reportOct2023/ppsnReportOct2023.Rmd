@@ -1,0 +1,308 @@
+---
+title: "PPSN Meeting, Fall 2023"
+subtitle: "Update on yield data processing"
+author: "Samuel Robinson, Ph.D."
+date: "Oct 18, 2023"
+output: 
+  beamer_presentation:
+    incremental: false
+    theme: "default"
+    colortheme: "lily"
+    highlight: "tango"
+urlcolor: blue
+df_print: kable
+classoption: aspectratio=169   
+header-includes: 
+  - \useinnertheme{circles}
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE, eval = TRUE, message=TRUE, 
+                      warning=TRUE, cache = TRUE, fig.height=5,fig.width=5)
+
+library(tidyverse)
+library(sf)
+library(stars)
+library(ggpubr)
+theme_set(theme_classic())
+
+source("C:\\Users\\Samuel\\Documents\\Projects\\UofC postdoc\\PPSN_code\\helperFunctions.R")
+load("C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Rasterized yield\\canProf.Rdata")
+
+ha2ac <- 2.47105
+
+canProf <- canProf[sapply(canProf,class)=='data.frame'] %>% 
+  bind_rows(.id='Grower') %>% 
+  filter(Yield_buAc!=0,!is.na(Yield_buAc))
+
+# canProf <- canProf %>% 
+#   mutate(CropType=gsub('Winter ','W.',CropType),
+#          CropType=gsub('Spring ','S.',CropType))
+
+#Provinces outlines
+canProvPath <- "C:\\Users\\Samuel\\Documents\\Shapefiles\\Canada provincial\\gpr_000b11a_e.shp"
+
+
+canProvinces <- read_sf(canProvPath) %>% 
+  filter(grepl("(Alberta|Saskatchewan)",PRENAME)) %>% 
+  st_transform(3978)
+
+bPolyPath <- "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries"
+sFiles <- dir(bPolyPath,"*.shp",full.names = TRUE)
+
+#Centroids for each field, plus polygon area
+fieldCent <- lapply(sFiles,function(x){
+  read_sf(x) %>% 
+    transmute(Field=Field,area_m2=as.numeric(st_area(.))) %>%
+    st_centroid() %>% st_transform(3978)
+}) %>% setNames(nm=gsub('_poly.shp','',dir(bPolyPath,"*.shp"),fixed=TRUE)) %>% 
+  bind_rows(.id='Grower')
+
+
+```
+
+## Update on yield data collection
+
+::: columns
+
+:::: column 
+
+- `r length(unique(canProf$Grower))` growers' datasets loaded
+
+- 4 datasets in progress: require custom coding for each dataset
+
+- `r canProf %>% mutate(GrowerFieldYear=paste0(Grower,'_',FieldYear)) %>% pull(GrowerFieldYear) %>% unique() %>% length` field-years, `r canProf %>% transmute(FieldYear=paste0(Grower,'_',gsub('_[0-9]{4}$','',FieldYear))) %>% unique() %>% nrow()` individual fields
+
+- `r canProf %>% select(Grower,FieldYear) %>% distinct() %>% separate(FieldYear,c('Field','Year'),sep='_') %>% pull(Year) %>%  unique() %>% length` years of data (`r canProf %>% select(Grower,FieldYear) %>% distinct() %>% separate(FieldYear,c('Field','Year'),sep='_') %>% pull(Year) %>% range() %>% paste0(.,collapse='-')`)
+
+- `r canProf %>% pull(CropType) %>% unique() %>% length` crop types
+
+- Field areas (acres): 
+  - Total = `r as.character(round(sum(ha2ac*fieldCent$area_m2/10000)))`
+  - Mean = `r round(mean(ha2ac*fieldCent$area_m2/10000),1)`
+  - Median = `r round(median(ha2ac*fieldCent$area_m2/10000),1)`
+  - Min = `r round(min(ha2ac*fieldCent$area_m2/10000),1)`
+  - Max = `r round(max(ha2ac*fieldCent$area_m2/10000),1)`
+
+::::
+
+:::: column
+
+```{r fieldLocs}
+ggplot()+
+  geom_sf(data=canProvinces,fill='white')+
+  geom_sf(data=fieldCent,size=0.2)
+```
+
+::::
+
+:::
+
+## Acreage by year
+
+```{r yearYield, fig.width=8, fig.height=4}
+canProf %>% count(FieldYear) %>% ungroup() %>% mutate(n=n*0.0988421526) %>% 
+  separate(FieldYear,c('Field','Year'),sep='_') %>% 
+  mutate(Year=factor(Year,levels=2012:2022)) %>%
+  group_by(Year,.drop = FALSE) %>% 
+  summarize(ac=sum(n)) %>% 
+  ggplot(aes(x=Year,y=ac))+geom_col()+labs(x='Year',y='Total acres')
+```
+
+## Overall yield
+
+```{r overallYield, fig.width=8, fig.height=4}
+canProf %>% filter(Yield_buAc<250) %>%  
+  ggplot(aes(x=Yield_buAc,y=after_stat(count),weight=0.0988421526))+
+  geom_histogram(binwidth = 5)+
+  labs(x='Yield (bu/ac)',y='Acres')
+```
+
+## Crop specific yield
+
+```{r cropYield, fig.width=8, fig.height=4}
+canProf %>% 
+  filter(CropType!='Chickpeas') %>% 
+  # slice_sample(n=20000) %>%
+  group_by(CropType) %>% 
+  mutate(n=n()*0.0988421526) %>% 
+  filter(Yield_buAc<quantile(Yield_buAc,0.99)) %>% 
+  mutate(nFields=length(unique(FieldYear))) %>% 
+  ungroup() %>% 
+  mutate(CropType=paste0(CropType,'\n',round(n),' ac, ',nFields,' fields')) %>% 
+  arrange(desc(n)) %>% 
+  filter(CropType %in% unique(CropType)[1:12]) %>% 
+  mutate(CropType=factor(CropType,levels=unique(CropType))) %>% 
+  ggplot(aes(x=Yield_buAc,y=after_stat(count),weight=0.0988421526))+
+  geom_histogram(bins=30)+
+  facet_wrap(~CropType,scales='free',ncol=4,nrow=3)+
+  labs(x='Yield (bu/ac)',y='Acres')
+
+```
+Not shown: corn, chickpeas, soybeans
+
+## Overall profit (2022 only)
+
+```{r overallProf, fig.width=8, fig.height=4, warning=FALSE}
+
+canProf %>% 
+  ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))+
+  geom_histogram(breaks=seq(-200,2000,20),aes(fill=Profit_ac<0),show.legend = FALSE)+
+  annotate(geom='text',x=0,y=10000,label=
+             paste0(round(100*mean(canProf$Profit_ac<0,na.rm=TRUE),2),'%\nunprofitable'),
+           col='red') +
+  labs(x='Profit ($/ac)',y='Acres')+
+  coord_cartesian(xlim=c(NA,2000))+
+  scale_fill_manual(values=c('grey30','red'))
+
+```
+
+## Crop-by-crop profit (2022 only)
+
+```{r cropProf, fig.width=8, fig.height=4, warning=FALSE, message=FALSE}
+canProf %>%  filter(!is.na(Profit_ac)) %>% 
+  # slice_sample(n=20000) %>%
+  filter(CropType!='Chickpeas') %>% 
+  group_by(CropType) %>% 
+  mutate(n=n()*0.0988421526) %>% 
+  filter(Yield_buAc<quantile(Yield_buAc,0.99)) %>% 
+  mutate(nFields=length(unique(FieldYear))) %>% 
+  ungroup() %>% 
+  mutate(CropType=paste0(CropType,'\n',round(n),' ac, ',nFields,' fields')) %>% 
+  arrange(desc(n)) %>% 
+  mutate(CropType=factor(CropType,levels=unique(CropType))) %>% 
+  ggplot(aes(x=Profit_ac,y=after_stat(count),weight=0.0988421526))+
+  geom_histogram(aes(fill=Profit_ac<0),show.legend = FALSE)+
+  facet_wrap(~CropType,scales='free')+
+  labs(x='Yield (bu/ac)',y='Acres')+
+  scale_fill_manual(values=c('grey30','red'))
+```
+
+## Challenge: missing data or zero yield?
+
+```{r fieldNAmap, fig.width=8,fig.height=4}
+load("C:\\Users\\Samuel\\Documents\\Projects\\UofC postdoc\\PPSN_code\\carpFigures2023\\yieldHistDat.RData")
+
+#Cells inside field
+inField <- st_intersects(rast,fBound,sparse = FALSE,as_points = TRUE)
+
+rast <- rast %>% #Changes NA cells within field to 0.01
+  mutate(Yield_tha=ifelse(is.na(Yield_tha)&inField,0.01,Yield_tha)) %>%
+  mutate(Profit_ha=Yield_tha*priceDat$CropPrice_t-priceDat$AvgCost_ha) %>% 
+  mutate(Profit_ha_cat=cut(Profit_ha,breaks = c(min(Profit_ha,na.rm = TRUE),0,400,800,max(Profit_ha,na.rm=TRUE)),include.lowest=TRUE,
+                           labels=c('<$0','$0-400','$400-800','>$800'))) %>% 
+  mutate(Profit_ha_cat=factor(Profit_ha_cat,levels=rev(levels(Profit_ha_cat)))) %>% 
+  mutate(Profit_ac=Profit_ha/2.47105) %>% 
+  mutate(Profit_ac_cat=cut(Profit_ac,breaks = c(min(Profit_ac,na.rm = TRUE),0,100,200,300,400,max(Profit_ac,na.rm=TRUE)),include.lowest=TRUE,
+                           labels=c('<$0','$0-100','$100-200','$200-300','$300-400','>$400'))) %>% 
+  mutate(Profit_ac_cat=factor(Profit_ac_cat,levels=rev(levels(Profit_ac_cat))))
+
+#Transform
+epsgCode <- 2957 #Sask UTM 13
+# epsgCode <- 3401 #AB 10 
+fBound <- fBound %>% st_transform(epsgCode)
+rast <- rast %>% st_transform(epsgCode)
+badSpots <- badSpots %>% st_transform(epsgCode)
+
+#Categorized plot
+rastNA <- rast %>% 
+  mutate(Profit_ac_cat=ifelse(Yield_tha==0.01,NA,Profit_ac_cat)) %>% 
+  mutate(Profit_ac_cat=factor(Profit_ac_cat,labels=levels(rast$Profit_ac_cat)))
+
+p1 <- ggplot()+
+  geom_stars(data=rastNA,aes(fill=Profit_ac_cat),na.action = na.omit)+
+  scale_fill_viridis_d(option='E',na.value = NA,direction = -1)+ #Cividis colour scheme
+  theme_bw()+labs(x=NULL,y=NULL,fill='Dollars\nper acre')+
+  theme(axis.text = element_blank(),axis.ticks = element_blank(),
+        panel.grid = element_blank(),legend.position = 'right')
+
+p2 <- ggplot()+
+  geom_stars(data=rast,aes(fill=Profit_ac_cat),na.action = na.omit)+
+  scale_fill_viridis_d(option='E',na.value = NA,direction = -1)+ #Cividis colour scheme
+  theme_bw()+labs(x=NULL,y=NULL,fill='Dollars\nper acre')+
+  theme(axis.text = element_blank(),axis.ticks = element_blank(),
+        panel.grid = element_blank(),legend.position = 'right')
+
+ggarrange(p1,p2,ncol=2,common.legend = TRUE, legend='right')
+
+```
+
+## Challenge: missing data or zero yield (cont.)
+
+```{r fieldNAfig, fig.width=8, fig.height=4}
+
+yieldHistDat <- data.frame(prof=as.vector(rast$Profit_ac),profCat=as.vector(rast$Profit_ac_cat),
+                           fillin=as.vector(rast$Yield_tha)==0.01,
+                           badSpot=factor(sapply(st_intersects(rast,badSpots,sparse = TRUE),function(x) if(length(x)==0) 0 else x))) %>%
+  filter(!is.na(prof)) %>% 
+  mutate(prof=ifelse(prof>-90,prof,-50)) %>%
+  mutate(profCat=factor(profCat,levels=levels(rast$Profit_ac_cat)))
+
+#Compare profit distributions
+p1 <- yieldHistDat %>% filter(!fillin) %>% 
+  ggplot()+
+  geom_histogram(aes(x=prof,y=after_stat(count),weight=0.0988421526,fill=prof<0),
+                 breaks=seq(-100,856,20),show.legend = FALSE)+
+  labs(x='Profit ($/acre)',y='Number of acres')+
+  geom_text(x=400,y=20,aes(label=paste0(round(100*mean(prof<0),2),'% Unprofitable')),col='red')+
+  theme_classic()+
+  scale_fill_manual(values=c('grey30','red'))
+
+p2 <- yieldHistDat %>% ggplot()+
+  geom_histogram(aes(x=prof,y=after_stat(count),weight=0.0988421526,fill=prof<0),
+                 breaks=seq(-100,856,20),show.legend = FALSE)+
+  labs(x='Profit ($/acre)',y='Number of acres')+
+  geom_text(x=400,y=40,aes(label=paste0(round(100*mean(prof<0),2),'% Unprofitable')),col='red')+
+  theme_classic()+
+  scale_fill_manual(values=c('grey30','red'))
+
+ggarrange(p1,p2,ncol=1)
+
+```
+
+## Data coverage (per field)
+
+```{r dataCoverage, fig.width=8, fig.height=4, warning=FALSE, message=FALSE}
+
+bPolyPath <- "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries"
+sFiles <- dir(bPolyPath,"*.shp",full.names = TRUE)
+
+fieldAreas <- lapply(sFiles,function(x){
+  read_sf(x) %>% 
+    transmute(Field=Field,area_m2=as.numeric(st_area(.))) %>% 
+    st_drop_geometry()  
+}) %>% setNames(nm=gsub('_poly.shp','',dir(bPolyPath,"*.shp"),fixed=TRUE)) %>% 
+  bind_rows(.id='Grower')
+
+rastCoverage <- canProf %>% 
+  filter(!is.na(Yield_buAc)) %>% 
+  count(Grower,FieldYear) %>% 
+  ungroup() %>% 
+  separate(FieldYear,c('Field','Year'),sep='_') %>% 
+  left_join(fieldAreas,by=c('Grower'='Grower','Field'='Field')) %>% 
+  mutate(prop=n*(20^2)/area_m2)
+
+rastCoverage %>% filter(prop<1.1) %>% 
+  ggplot(aes(x=prop))+geom_histogram()+
+  geom_vline(xintercept = 1,col='black')+
+  geom_vline(xintercept=c(0.74,0.93,1),linetype='dashed',col='red')+
+  annotate('text',x=c(0.74,0.93,1)-0.04,y=1300,label=c('25th','50th','75th'),size=3,col='red')+
+  labs(x='Proportion raster coverage',y='Number of fields')+
+  scale_x_continuous(breaks=seq(0,1,0.25))
+
+```
+
+## Other challenges
+
+- Grower records
+  - Need standardization/name matching
+  - Mismatches between yield data, grower records, satellite data
+- Data Filtering 
+  - Parameters (i.e. "throw out when X = ...")
+  - Order of filtering pipeline
+  - Combine back-correction smoothing
+  - Not trivial: affects grower reports, final models, and grower trust/buy-in
+  - __GARBAGE IN, GARBAGE OUT__
+- Further profit mapping
+  - Require economic data prior to 2022
+
