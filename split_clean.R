@@ -3,9 +3,9 @@ source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
 
 # Basic operations - unzip and process csv ----------------------------------------
 
-unzipAll('D:\\geoData\\YieldStorageRaw\\202256 ABCO Farms/',rmOld = TRUE)
+unzipAll("D:\\geoData\\YieldStorageRaw\\Fall 2023 Data\\202215 Yield Data Files 2023\\202215 Yield Data Files",rmOld = TRUE)
 
-dirPath <- "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK/"
+dirPath <- "D:\\geoData\\SMSexport\\202231 HILLSBORO FARMS"
 
 rename_csv(dirPath)
 # debugonce(rename_csv)
@@ -30,66 +30,78 @@ fn <- 'Aaron east mini_2017'
 clean_csv('./Aaron east mini_2017.csv','./clean/Aaron east mini_2017.csv','./clean/Aaron east mini_2017.png',
           useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
 
-#Single directory
-dirPath <- "D:\\geoData\\SMSexport\\202216 ZENNETH FAYE"
-setwd(dirPath)
-for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
-  p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
-  p2 <- gsub('csv$','png',p1) #png writing path
-  split_csv(l,FALSE) #Split files
-  if(file.exists(p1)){
-    print(paste0(gsub('./','',l),' already processed. Skipping.'))
-  } else {
-    try({
-      clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
-    },
-    outFile =gsub('.csv','_ERROR.txt',basename(l)))
-  gc(FALSE)
-  }
-}
-# debugonce(clean_csv)
+#Process single/multiple directories
 
-#All directories
-dirs <- dir('D:\\geoData\\SMSexport\\','.*2022[0-9]{2}\\s',include.dirs = TRUE,full.names = TRUE)
-for(d in dirs){
+# dirPaths <- c("D:\\geoData\\SMSexport\\202216 ZENNETH FAYE",
+#               "D:\\geoData\\SMSexport\\202230 HANSBREK FARMS LTD",
+#               "D:\\geoData\\SMSexport\\202244 MARC AND CHERYL NOREEN",
+#               "D:\\geoData\\SMSexport\\202237 STUART LAWRENCE")
+dirPaths <- "D:\\geoData\\SMSexport\\202244 MARC AND CHERYL NOREEN"
+
+for(d in dirPaths){
   setwd(d)
-  try({rename_csv('.')},silent = TRUE)
-  for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
+  for(l in dir('.','*\\_(19|20)\\d{2}.csv$',full.names = TRUE)){
+    if(!dir.exists('./clean')) dir.create('./clean') #Creates "clean" directory if it doesn't already exist
     p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
     p2 <- gsub('csv$','png',p1) #png writing path
+    split_csv(l,FALSE) #Split files
     if(file.exists(p1)){
       print(paste0(gsub('./','',l),' already processed. Skipping.'))
     } else {
-      # clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
       try({
-        # rename_csv(".") #Fix default file names names from SMS
-        split_csv(l,FALSE) #Split files
         clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
-        },outFile =gsub('.csv','_ERROR.txt',basename(l)))
+      },
+      outFile =gsub('.csv','_ERROR.txt',basename(l)))
       gc(FALSE)
-    } 
+    }
   }  
 }
+debugonce(clean_csv)
 
-#Files in directory with ERROR files
-setwd(dirPath)
-fp <- gsub('_ERROR.txt','.csv',list.files('.',pattern='*ERROR*',full.names = TRUE))
-for(l in fp){
-  p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
-  p2 <- gsub('csv$','png',p1) #png writing path
-  split_csv(l,FALSE) #Split files
-  if(file.exists(p1)){
-    print(paste0(gsub('./','',l),' already processed. Skipping.'))
-  } else {
-    try({
-      clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
-    },
-    outFile =gsub('.csv','_ERROR.txt',basename(l)))
-    gc(FALSE)
-  }
-}
+# #All directories
+# dirs <- dir('D:\\geoData\\SMSexport\\','.*2022[0-9]{2}\\s',include.dirs = TRUE,full.names = TRUE)
+# for(d in dirs){
+#   setwd(d)
+#   try({rename_csv('.')},silent = TRUE)
+#   for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
+#     p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
+#     p2 <- gsub('csv$','png',p1) #png writing path
+#     if(file.exists(p1)){
+#       print(paste0(gsub('./','',l),' already processed. Skipping.'))
+#     } else {
+#       # clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
+#       try({
+#         # rename_csv(".") #Fix default file names names from SMS
+#         split_csv(l,FALSE) #Split files
+#         clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
+#         },outFile =gsub('.csv','_ERROR.txt',basename(l)))
+#       gc(FALSE)
+#     } 
+#   }  
+# }
+
+# #Files in directory with ERROR files
+# setwd(dirPath)
+# fp <- gsub('_ERROR.txt','.csv',list.files('.',pattern='*ERROR*',full.names = TRUE))
+# for(l in fp){
+#   p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
+#   p2 <- gsub('csv$','png',p1) #png writing path
+#   split_csv(l,FALSE) #Split files
+#   if(file.exists(p1)){
+#     print(paste0(gsub('./','',l),' already processed. Skipping.'))
+#   } else {
+#     try({
+#       clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
+#     },
+#     outFile =gsub('.csv','_ERROR.txt',basename(l)))
+#     gc(FALSE)
+#   }
+# }
 
 # Next step - rasterize yield data ----------------------------------------
+
+
+#Check all folders and rasterize where needed
 
 if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
   setwd("D:/geoData/SMSexport")
@@ -115,6 +127,27 @@ for(i in 1:length(yDirs)){
   outFile =gsub('/rasters','_ERROR.txt',rDirs[1]))
   gc()
 }
+
+# Rasterize selected folders
+
+yDirs <- c("D:\\geoData\\SMSexport\\202216 ZENNETH FAYE\\clean")
+           # "D:\\geoData\\SMSexport\\202230 HANSBREK FARMS LTD\\clean",
+           # "D:\\geoData\\SMSexport\\202244 MARC AND CHERYL NOREEN\\clean",
+           # "D:\\geoData\\SMSexport\\202237 STUART LAWRENCE\\clean")
+rDirs <- gsub('clean','rasters',yDirs)
+
+for(i in 1:length(yDirs)){
+  if(!dir.exists(rDirs[i])) dir.create(rDirs[i])
+  try({
+    rasterizeYield(yieldDir = yDirs[i],
+                   boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
+                   # fieldFiltChar = "2022.csv$",
+                   rastDir = rDirs[i], overwrite = FALSE)  
+  },
+  outFile =gsub('/rasters','_ERROR.txt',rDirs[1]))
+  gc()
+}
+
  
 ##Single dir
 debugonce(rasterizeYield)
@@ -124,8 +157,28 @@ rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM ST
                rastDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK\\rasters", overwrite = FALSE)
 
 # Other things ------------------------------------------------------------
-debugonce(split_csv)
-split_csv("./Above Bees S.csv",FALSE)
+
+#Create boundary files for non-SMS directories
+
+fName <- c("202230 HANSBREK FARMS LTD",
+           "202244 MARC AND CHERYL NOREEN",
+           "202261 DAVID FORSEILLE")
+
+for(f in fName){
+  csv2Boundary(dirPath = paste0("D:\\geoData\\SMSexport\\",f,"\\clean"),
+               fileName = paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",f,"_poly.shp"))  
+}
+
+for(f in fName){
+  csv2Boundary(dirPath = paste0("D:\\geoData\\SMSexport\\",f,"\\clean"),
+               fileName = paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",f,"_poly.shp"))  
+}
+
+
+
+
+# debugonce(split_csv)
+# split_csv("./Above Bees S.csv",FALSE)
 
 # #Figure out what an appropriate cutoff for swath width is
 # for(l in dir('/media/rsamuel/Storage1/geoData/SMSexport/Lakeland College','*20(19|20).csv',full.names = TRUE)){

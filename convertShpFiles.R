@@ -78,7 +78,6 @@ fps <- list.files(readDir,pattern='*.shp$',recursive = TRUE,full.names = TRUE)
 # path <- fps[1]
 
 for(path in fps){
-  
   fname <- strsplit(path,'/')[[1]]
   fname <- gsub("([0-9]{7}_|_rawYield_shp.shp)","",fname[length(fname)])
   fname <- gsub('_','-',fname)
@@ -93,6 +92,7 @@ for(path in fps){
               Elevation_m=elev_m,SwathWidth_m=width_m,
               Moisture_perc=`moisture_%`,Yield_tha=`rate_kg/ha`/1000,
               Speed_kmh = speed_kph,Fuel_L=`fuel_L/ha`) %>% 
+    st_drop_geometry() %>%
     filter(!is.na(Yield_tha),Distance_m!=0,!is.na(Distance_m)) %>% 
     mutate(Yield_tha=ifelse(Yield_tha==0,0.01,Yield_tha)) %>% 
     write.csv(file=paste0(writeDir,'\\',fname,'_',unique(.$Year),'.csv'),row.names=FALSE)  

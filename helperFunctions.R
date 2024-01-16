@@ -5,17 +5,15 @@ unzipAll <- function(d,rmOld=FALSE){
   if(length(z)==0) stop(paste0('No files found in ',d))
   z <- normalizePath(z)
   print(paste0('Unzipping ',length(z),' directories within ',d))
-  if(rmOld) print('Removing old zip directories')
   pb <- txtProgressBar(style=3)
   for(i in 1:length(z)){
     tryCatch(expr = {
       unzip(z[i],exdir=gsub('\\.zip$','',z[i]))
-      if(rmOld) invisible(file.remove(z[i]))  
+      if(rmOld) invisible(file.remove(z[i]))
     }, error = function(e){
       message('Error occurred: ')
       message(e)
     })
-    
     setTxtProgressBar(pb,i/length(z))
   }
   close(pb)
@@ -149,7 +147,7 @@ split_csv <- function(path,rmOld=FALSE,fastRead=TRUE){
 rename_csv <- function(dirname){
   # dirname <- "D:\\geoData\\SMSexport\\202208 Emde Land and Cattle Corp/" #Debugging
   if(!dir.exists(dirname)) stop('Directory not found')
-  fullpath <- dir(path = dirname,pattern = '20[0-9]{4}.*_.*_.*_20[0-9]{2}_.*\\.csv$',
+  fullpath <- dir(path = dirname,pattern = '(19|20)[0-9]{4}\\s.*_.*_.*_(19|20)[0-9]{2}_.*\\.csv$',
                   full.names = TRUE) #Get full paths of files
   if(length(fullpath)==0) stop('No files matching SMS export pattern found')
   files <- basename(fullpath) #Get csv file name
@@ -253,11 +251,16 @@ fix_names <- function(filedir){
 
 #"Inlier" spatial filtering procedure from Vega et al 2019, https://doi.org/10.1007/s11119-018-09632-8 
 #written to work with sf + dplyr. Returns boolean
-vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=NULL,chunksize=7500){
+vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=NULL,chunksize=7500,exclude=NULL){
   library(spdep)
   library(tidyverse)
   
   if(!any(class(dat) %in% 'sf')) stop('Dataframe must be sf object')
+  if(any(!is.null(exclude))){
+    if(length(exclude)!=nrow(dat)) stop('exclude not the same length as dataframe')
+    if(!is.logical(exclude)) stop('exclude must be a logical vector')
+    dat <- dat %>% filter(!exclude) #Remove points to be excluded
+  }
   
   #Get neighbourhood indices for each point (which other points are in this point's neighbourhood?)
   if(spDepInd){ #Original serial version from spdep - very slow  
@@ -306,6 +309,12 @@ vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=
     mutate(keepThese=ifelse(is.na(keepThese),FALSE,keepThese)) 
   
   ret <- pull(results) #Convert to a vector
+  
+  if(any(!is.null(exclude))){ #If data were excluded
+    temp <- rep(TRUE,length(exclude))
+    temp[!exclude] <- ret
+    ret <- temp
+  }
   return(ret)
 }
 
@@ -318,9 +327,10 @@ vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=
 # ncore=1 : number of cores to use in processing
 # fastRead=TRUE: use "fast" read/write csv commands?
 # speedR2thresh = 0.95: R2 threshold for speed-distance correlation models used to fill in speed gaps (lower than this, and model will quit)
+# upperSpeed = 15: upper limit for combine ground speed (km/hr); "usual" ground speed for actual harvest is <5 mph (8kph)
 
 clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPath=NULL,useVega=TRUE,keepFiltCols=FALSE,ncore=1,fastRead=TRUE,
-                      speedR2thresh=0.95){
+                      speedR2thresh=0.95,upperSpeed=15){
   library(tidyverse)
   library(sf)
   if(ncore>1){
@@ -346,7 +356,8 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
     if(!xor(is.null(q),is.null(z))&!returnDiffs){
       stop('Input quantiles or Z-score')
     } else if(sum(is.na(bearing))==length(bearing)){
-      stop('No bearings (track angles) found')
+      warning('No bearings (track angles) found. Skipping filter')
+      return(rep(TRUE,length(bearing)))
     }
     #Difference in compass bearings (in degrees)
     bearingDiff <- function(x1,x2){
@@ -530,11 +541,11 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
     }
   }
   
-  #Check speed column
-  nSpeedMiss <- sum(dat$Speed_kmh==0 | is.na(dat$Speed_kmh))
+  #Check ground speed 
+  nSpeedMiss <- with(dat,sum(is.na(Speed_kmh))) #Missing speed numbers
   if(nSpeedMiss>0){
     propSpeedMiss <- nSpeedMiss/nrow(dat)
-    spdMsg <- paste0('Zero or NA ground speed at ',nSpeedMiss,' points (',round(100*propSpeedMiss,1),'%)')
+    spdMsg <- paste0('Ground speed NA at ',nSpeedMiss,' points (',round(100*propSpeedMiss,1),'%)')
     if(propSpeedMiss>0.9){
       stop(spdMsg)
     } else {
@@ -542,7 +553,7 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
       
       #Fit simple LM to non-zero speed data
       tempDat <- dat %>% 
-        filter(Speed_kmh!=0 & !is.na(Speed_kmh)) %>% 
+        filter(Speed_kmh!=0 & !is.na(Speed_kmh) & Speed_kmh<upperSpeed) %>% #Remove zeros, NAs, points above upper limit
         mutate(predSpeed=3.6*Distance_m/Duration_s)
       
       speedMod <- lm(Speed_kmh ~ predSpeed,data=tempDat)
@@ -553,10 +564,10 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
         figpath2 <- gsub('\\.[a-z]{3}$','_speedMod.png',figpath)
       }
       
-      #Make speed-distance figure
+      #Make speed prediction figure
       png(figpath2,width=10, height=10, units = 'in', res = 200)
-      plot(predSpeed~Speed_kmh,data=tempDat,xlab='Actual Speed (km/h)',
-           ylab='Predicted Speed (km/h)',pch=19)
+      plot(predSpeed~Speed_kmh,data=tempDat,xlab='Measured Ground Speed (km/h)',
+           ylab='Predicted Ground Speed (km/h)',pch=19)
       abline(speedMod,col='red'); abline(0,1,col='cyan',lty=2)
       plotText <- paste0('y ~ ',round(coef(speedMod)[1],2),'+ ',
                          round(coef(speedMod)[2],2),'x\nR^2 = ', 
@@ -568,28 +579,20 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
       figPath <- NULL
       
       if(summary(speedMod)$r.squared<speedR2thresh){
-        stop(paste0('Bad speed predictions from Distance/Duration (R2<',speedR2thresh,')'))
+        warning(paste0('Bad ground speed predictions from Distance/Duration (R2<',speedR2thresh,'). Check output'))
       }
       
       #Fills in missing speed measurements
       dat <- dat %>% mutate(predSpeed=3.6*Distance_m/Duration_s) %>% 
         mutate(predSpeed2=predict(speedMod,newdata=.)) %>% 
-        mutate(Speed_kmh = ifelse(Speed_kmh==0 | is.na(Speed_kmh),predSpeed2,Speed_kmh)) %>% 
+        mutate(Speed_kmh = ifelse(is.na(Speed_kmh),predSpeed2,Speed_kmh)) %>% 
         select(-predSpeed,-predSpeed2)
       rm(tempDat,speedMod,plotText)
     }
   }
   
-  #Run filters
-  if(useVega){
-    #Spatial "inliers"
-    print('Running Vega filter')
-    dat <- dat %>% mutate(vegaFilt = vegaFilter(.,Yield_tha,nDist = 50,cluster = cl))
-  } else{
-    dat <- dat %>% mutate(vegaFilt = TRUE)   
-  }
-  
-  print('Running other filters')
+  #Run filters - TRUE indicates data point passed filtering process ("acceptable")
+  print('Running filters')
   dat <- dat %>% 
     #Very large outliers. Exact thresholds should be determined by the combine operator or agronomist
     mutate(tooLarge = Yield_tha<upperYield) %>% 
@@ -598,7 +601,7 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
     #Extreme bearing changes (turning)
     mutate(bFilt = bearingFilter(Track_deg,q=0.98)) %>% 
     #Absolute speed outliers
-    mutate(speedFilt = QuantileFilter(Speed_kmh,q=0.98)) %>% 
+    mutate(speedFilt = QuantileFilter(Speed_kmh,q=0.98) & Speed_kmh<upperSpeed & 0<Speed_kmh) %>% 
     #Speed differences (>20% change 2 steps forward and backward, suggested by
     # Lyle et al 2014: https://doi.org/10.1007/s11119-013-9336-3)
     mutate(dSpeedFilt = dSpeedFilter(Speed_kmh,l=c(-2,-1,1,2),perc = 0.2)) %>% 
@@ -608,8 +611,22 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   # mutate(swathFilt = SwathWidth_m>max(SwathWidth_m)*0.2) 
   
   #Combine filter criteria
+  filtCrit <- with(dat, inBoundary & tooLarge & qFilt & bFilt & speedFilt & dSpeedFilt & posFilt)
+  
+  if(useVega){
+    #Spatial "inliers"
+    print('Running Vega filter')
+    dat <- dat %>% 
+      mutate(vegaFilt = vegaFilter(.,Yield_tha,nDist = 50,
+                                   cluster = cl,exclude = !filtCrit))
+  } else{
+    dat <- dat %>% mutate(vegaFilt = TRUE)   
+  }
+  
+  filtCrit <- filtCrit & dat$vegaFilt
+  
   dat <- dat %>% 
-    mutate(allFilt = inBoundary & tooLarge & vegaFilt & qFilt & bFilt & speedFilt & dSpeedFilt & posFilt) %>% 
+    mutate(allFilt = filtCrit) %>% 
     mutate(Yield_tha_filt = ifelse(allFilt, Yield_tha, NA)) #Turns filtered values to NAs
   
   propFilt <- (sum(is.na(dat$Yield_tha_filt))/nrow(dat)) #Proportion of filtered data
@@ -617,12 +634,13 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
     filtCol <-  st_drop_geometry(dat) %>% #Proportion data dropped from each category
       select(inBoundary:allFilt) %>% as.matrix() %>%
       apply(.,2,function(x) round(mean(!x),2)) 
-    msg <- paste('More than 50% of data have been filtered. Check filtering categories:\n',
+    msg <- paste0(round(propFilt*100,1),'% of the data have been filtered. Check filtering categories:\n',
                  paste(capture.output(print(filtCol)),collapse = "\n"))
     sapply(strsplit(msg,'\n')[[1]],print)
-    stop(msg)
+    # stop(msg)
+    warning(msg)
   } else if(0.3<propFilt) {
-    warning('More than 30% of data have been filtered')
+    warning(paste0(round(propFilt*100,1),'% of the data have been filtered'))
   }
   
   #FILTERED DATA PLOTS
@@ -641,6 +659,8 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   #Figure out upper limits for plots and filters
   yldBreaks <- pretty(dat$Yield_tha_filt)[2:5] #"Pretty" breaks (without bottom and top)
   yldBreaks <- yldBreaks[yldBreaks<=upperYield]
+  yldBreaks <- yldBreaks[!is.na(yldBreaks)]
+  if(length(yldBreaks)<2) yldBreaks <- median(dat$Yield_tha_filt,na.rm = TRUE)
   
   dat$yield <- makeBreaks(dat$Yield_tha,b=yldBreaks) #Raw yield
   dat$yieldFilt <- makeBreaks(dat$Yield_tha_filt,b=yldBreaks) #Filtered yield
@@ -685,6 +705,35 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   }
   print(paste0('Finished. Time: ', Sys.time()))
 }
+
+#Function to create boundary multipolygon from crop csvs
+# Output is same format as SMS output - needs to be further processed using cropTypeACI() to get satellite crop type metrics
+# Boundaries are very simple 20m buffered convex hull; need to further 
+
+csv2Boundary <- function(dirPath=NULL,fileName=NULL){
+  library(tidyverse); library(sf)
+  if(is.null(dirPath)) stop('Folder path must be provided')
+  csvPaths <- dir(dirPath,'*\\_20\\d{2}.csv$',full.names = TRUE)
+  if(length(csvPaths)==0) stop('No csvs found in folder')
+  if(is.null(fileName)) stop('Output shapefile must be named')
+  
+  fldNames <- gsub('*\\_20\\d{2}.csv$','',basename(csvPaths)) #Get field names
+  
+  sapply(csvPaths,function(path){
+    data.table::fread(path,sep=",") %>% data.frame() %>% #Get coordinates
+      st_as_sf(coords=c('Longitude','Latitude')) %>%
+      st_set_crs(4326) %>% st_transform(3401) %>% 
+      st_union() %>% st_convex_hull() %>% st_buffer(20) %>% #Convex hull + Buffer
+      st_transform(4326)}) %>% 
+    st_as_sfc() %>% st_set_crs(4326) %>% st_as_sf() %>% #Convert to sf object
+    mutate(Field=fldNames,Obj__id=1,Bnd_Name=fldNames) %>% 
+    rename(geometry=x) %>% 
+    write_sf(fileName)
+}
+
+# #Debugging
+# csv2Boundary(dirPath = "D:\\geoData\\SMSexport\\202216 ZENNETH FAYE\\clean",
+#              fileName = "D:\\geoData\\SMSexport\\Field Boundaries\\202216 ZENNETH FAYE_poly.shp")
 
 #Get crop type info from ACI data, add as columns in field boundary shapefiles
 cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInventory",
@@ -783,15 +832,16 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
   
   #Function for running labFun across different fields and years
   getCover <- function(f,y,rasts=aciRast,extents=aciExtents,fBound=fieldBoundaries){
-    x <- st_geometry(fBound)[f] #Boundary for 
+    x <- st_geometry(fBound)[f] #Boundary for field
     use <- which(extents$year==y & sapply(st_contains(extents,x),length)==1)
     if(length(use)==0){
       stop('Polygon does not overlap any raster.\nf=',f,', y=',y,'\n Polygon Field=',fBound$Field[f])
     } 
-    ret <- sapply(use,function(u,xx){
+    tempFun <- function(u,xx){ #Transforms and gets codes from raster
       xx <- st_transform(xx,st_crs(rasts[[u]]))
       suppressWarnings(aggregate(rasts[[u]],xx,labFun,N=5)$Code) #Warnings from mismatched EPSG codes
-    },xx=x)
+    }
+    ret <- sapply(use,tempFun,xx=x)
     if(length(ret)>1){
       ret <- ret[!grepl(paste0(rep('NA_0',5),collapse=','),ret)]
       if(length(ret)==0){
@@ -1137,4 +1187,6 @@ profEstimates <- function(rastDir = NULL,
     set_names(nm = rastPaths$fieldYr) %>% 
     bind_rows(.id='FieldYear')
 }
+
+
 
