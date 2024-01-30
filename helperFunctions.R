@@ -318,6 +318,8 @@ vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=
   return(ret)
 }
 
+#Function to clean yield data
+
 # newpath=NULL : path for cleaned csv to be written
 # figpath=NULL : path for figures to be written
 # upperYield=NULL : upper bound on yield (t/ha)
@@ -705,6 +707,935 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   }
   print(paste0('Finished. Time: ', Sys.time()))
 }
+
+
+#Function to clean yield data csvs and adjust for combine differences
+
+# newpath=NULL : path for cleaned csv to be written
+# figpath=NULL : path for figures to be written
+# upperYield=NULL : upper bound on yield (t/ha)
+# boundaryPath=NULL : boundary shapefile (optional)
+# useVega=TRUE : use Vega spatial inlier filter?
+# keepFiltCols=FALSE : keep filter columns?
+# ncore=1 : number of cores to use in processing
+# fastRead=TRUE: use "fast" read/write csv commands?
+# speedR2thresh = 0.95: R2 threshold for speed-distance correlation models used to fill in speed gaps (lower than this, and model will quit)
+# upperSpeed = 15: upper limit for combine ground speed (km/hr); "usual" ground speed for actual harvest is <5 mph (8kph)
+
+clean_csv2 <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,
+                       boundaryPath=NULL,useVega=TRUE,keepFiltCols=FALSE,
+                       ncore=1,fastRead=TRUE,speedR2thresh=0.95,upperSpeed=15){
+  library(tidyverse)
+  library(sf)
+  if(ncore>1){
+    library(parallel)
+    cl <- makeCluster(ncore)
+    on.exit({stopCluster(cl); rm(list=ls());gc()}) #Cleanup on exit
+    # print(paste0('Using ',ncore,' cores for parallel processing'))
+  } else {
+    cl <- NULL
+    on.exit({rm(list=ls());gc()})
+  }
+  
+  #FUNCTIONS
+  
+  #Function to filter anything above certain quantiles
+  QuantileFilter <- function(x,quant=0.99){ 
+    l <- c((1-quant)/2,1-(1-quant)/2) #Symmetric quantiles
+    x>quantile(x,l[1]) & x<quantile(x,l[2]) 
+  }
+  
+  #Filter differences in track angles 
+  bearingFilter <- function(bearing,q=NULL,z=NULL,returnDiffs=FALSE){
+    if(!xor(is.null(q),is.null(z))&!returnDiffs){
+      stop('Input quantiles or Z-score')
+    } else if(sum(is.na(bearing))==length(bearing)){
+      warning('No bearings (track angles) found. Skipping filter')
+      return(rep(TRUE,length(bearing)))
+    }
+    #Difference in compass bearings (in degrees)
+    bearingDiff <- function(x1,x2){
+      x <- x1-x2
+      x <- ifelse(abs(x)>180,x-(360*sign(x)),x) #Angle differences can't be >180
+      return(x)
+    }
+    
+    #Looks 1 point ahead and behind
+    bd <- cbind(bearingDiff(lag(bearing),bearing),
+                bearingDiff(lead(bearing),bearing))
+    #Maximum bearing difference ahead and behind
+    bd <- apply(bd,1,function(x){
+      max(abs(x),na.rm=TRUE)*sign(x[which.max(abs(x))])
+    }) 
+    
+    if(returnDiffs) return(bd) #Return bearing differences only, without filtering
+    
+    if(!is.null(q)){
+      ret <- QuantileFilter(bd,q=q)
+    } else {
+      ret <- ZscoreFilter(bd,z=z)
+    }
+    return(ret)
+  }
+  
+  #Positional difference filter - filters out very distant and very close points
+  posFilter <- function(data,q=NULL,returnDiffs=FALSE,upperOnly=FALSE){ 
+    if(is.null(q)&!returnDiffs) stop('Input upper quantile')
+    
+    if(units(st_distance(data[1,],data[2,]))$numerator!='m'){
+      warning('Position differences not in meters')
+    } 
+    coords <- st_coordinates(data) #Get coordinates
+    pdiff <- sapply(1:(nrow(coords)-1),function(i){ #Distances between points
+      as.numeric(dist(coords[i:(i+1),]))
+    }) 
+    pdiff <- cbind(c(pdiff,NA),c(NA,pdiff)) #Forward and backward lags
+    pdiff <- apply(pdiff,1,max,na.rm=TRUE) #Maximum distance ahead and behind
+    if(returnDiffs){
+      return(pdiff)
+    } else {
+      if(upperOnly){
+        return(quantile(pdiff,q)>pdiff) #Upper quantile  
+      } else {
+        return(QuantileFilter(pdiff,q)) #2-sided quantiles (upper and lower)  
+      }
+    }
+  }
+  
+  #Filter for (forward and backward) lagged speed differences.
+  dSpeedFilter <- function(speed,l=c(-1,1),perc=0.2){ 
+    #Overloaded lag function that takes negative values
+    lag2 <- function(x,n){
+      if(n==0) {
+        return(x) #No lag
+      } else if(n>0){
+        lag(x,n) #Positive lag
+      } else {
+        lead(x,abs(n)) #Negative lag
+      } 
+    }
+    
+    llist <- sapply(l,function(x) (lag2(speed,x)-speed)/lag2(speed,x)) #Matrix of % diffs
+    
+    #Are any lagged speed values > percent change threshold?
+    ret <- !apply(llist,1,function(y) any(abs(y)[!is.na(y)]>perc))
+    
+    return(ret)
+  }
+  
+  
+  # Make polygons from width, dist, and angle measurements, centered on location from dat
+  makePolys <- function(dat,width='w',dist='d',angle='a',backwards=FALSE){
+    
+    gType <- dat %>% st_geometry_type(FALSE) #Geometry type
+    
+    if(gType!='POINT') warning(paste('Input data type is',gType,'not POINT',sep=' '))
+    
+    rectFun <- function(x,y,w,d,a,b){
+      #Function to create corners of rotated rectangle from:
+      #   starting location (x,y),
+      #   width (w), distance (d), and angle (a)
+      #   rotate rectangles 180 degrees? (b)
+      rotate <- ifelse(b,90,270)
+      a <- (rotate-a)*pi/180 #90-angle in radians. 
+      v <- c(x,y) #Starting point
+      v1 <- c(d*cos(a),d*sin(a)) #Vectors to add together to get corners
+      v2 <- c(-(w/2)*sin(a),(w/2)*cos(a))
+      return(rbind(v+v2,v+v1+v2,v+v1-v2,v-v2,v+v2)) #Corners of rotated rectangle
+    }
+    datCRS <- st_crs(dat) #Coordinate system from dat
+    #Apply rectFun to all rows in dat. Probably could be done through map or some other purrr related thing.
+    xcoord <- st_coordinates(dat)[,1]
+    ycoord  <- st_coordinates(dat)[,2]
+    polys <- lapply(1:nrow(dat),function(i){
+      r <- rectFun(x = xcoord[i], y = ycoord[i],  w = dat[[width]][i],  d = dat[[dist]][i],
+                   a = dat[[angle]][i], b = backwards)
+      st_polygon(list(r))
+    })
+    #Combine dat with new polygon geometry, and add original CRS
+    dat2 <- st_sf(st_drop_geometry(dat),geometry=st_sfc(polys)) %>% st_set_crs(datCRS)
+    return(dat2)
+  }
+  
+  a <- Sys.time()
+  
+  #Read in data
+  if(!file.exists(path)) stop('File ',path,' not found')
+  filename <- strsplit(path,'/')[[1]] 
+  filename <- filename[length(filename)]
+  
+  cClass <- c(rep('numeric',2),rep('character',7),rep('numeric',9))
+  if(fastRead){
+    dat <- data.table::fread(path,sep=",",colClasses = cClass)
+    dat <- data.frame(dat)  
+  } else {
+    dat <- read.csv(path,colClasses = cClass)
+  }
+  print(paste0('Read in ',basename(getwd()),' / ',filename,' : ',nrow(dat),' data points -------------------------'))
+  print(paste0('Time: ', Sys.time()))
+  
+  if(length(unique(dat$Field))>1) stop('Multiple field names: has this file been properly split?') 
+  
+  #Add spatial info
+  dat <- dat %>% 
+    st_as_sf(coords=c('Longitude','Latitude'),remove=FALSE) %>% #Add spatial feature info
+    st_set_crs(4326) %>% #Lat-lon format 
+    st_transform(3401) %>% #Transform to UTM
+    mutate(E=st_coordinates(.)[,1],N=st_coordinates(.)[,2]) %>% #Create N and E column
+    mutate(E=(E-mean(E)),N=(N-mean(N))) #Center N and E values
+  
+  fieldName <- unique(dat$Field)
+  
+  #Read in boundary around individual field
+  if(file.exists(bPath)){
+    boundPoly <- read_sf(bPath) %>%  
+      filter(Field==fieldName) 
+    if(nrow(boundPoly)==0) stop('No boundary found for Field ',fieldName)
+  } else {
+    stop('No field boundary shapefile provided")
+  }
+  
+  
+  cNames <- colnames(dat) #Column names to retain
+  
+  
+  #Points outside of field boundaries
+  if(is.null(boundaryPath)){
+    print('No field boundary provided. Using all data points')
+    dat$inBoundary <- TRUE
+  } else {
+    if(!file.exists(boundaryPath)) stop('File ',path,' not found')
+    fieldBoundary <- read_sf(boundaryPath) %>% st_transform(3401)
+    dat$inBoundary <- apply(st_contains(fieldBoundary,dat,sparse = FALSE),2,any)
+  }
+  
+  #Check for point coverage across boundary
+  
+  yieldArea <- makePolys(dat, width='Width_m', dist = 'Distance_m',
+                         angle = 'Bearing_deg')
+  
+  #If less than 50% of field area has data
+  if(st_area(yieldArea)<st_area(boundPoly)*0.5){
+    if(st_area(yieldArea)<st_area(boundPoly)*0.25){
+      stop("Less than 25% of field boundary area has yield data. Skipping")
+    } else {
+      warning("Less than 50% of field boundary area has yield data.")
+    }
+  }
+  
+  #Removes data points above upper limit thresholds
+  if(is.null(upperYield)){
+    print(paste0('Using default upper yield limit'))
+    
+    #These are rough estimates of "reasonable" maximum yield
+    defaultLims <- data.frame(crop=c('wheat','barley','rye','canola','mustard','peas','flax','oats','lentil'),
+                              upr=c(10.75,10.75,10.75,10,10,10,8,10,8),
+                              uprPlot=c(6,6,6,6,6,6,6,6,6)) #Upper limits for plots
+    
+    cropTypes <- unique(dat$Crop) #Unique crop types
+    
+    #Matrix matching listed crop types (rows) to ones from data (columns)
+    chooseCrops <- do.call('rbind',lapply(defaultLims$crop,function(x) grepl(x,cropTypes,ignore.case = TRUE)))
+    colnames(chooseCrops) <- cropTypes
+    rownames(chooseCrops) <- defaultLims$crop
+    
+    if(sum(chooseCrops)==0){
+      warning(paste0('Crop type ',paste0(cropTypes,collapse=', '),' not listed in threshold table. Removing upper limit'))
+      upperYield <- Inf
+      uprLimPlot <- quantile(dat$Yield_tha,0.95) #Upper limit for filter/plots
+    } else {
+      if(any(apply(chooseCrops,2,sum)==0)){
+        warning('Crop type ',paste0(cropTypes[apply(chooseCrops,2,sum)==0],collapse=', '),' removed: no matches.')
+      }
+      cropTypes <- defaultLims$crop[apply(chooseCrops,1,any)] #reset names of croptypes
+      upperYield <- defaultLims$upr[apply(chooseCrops,1,any)] #Upper limit for filter
+      uprLimPlot <- defaultLims$uprPlot[apply(chooseCrops,1,any)] #Upper limit for plotted yield
+      if(length(cropTypes)>1){
+        warning('Multiple crop types: ',paste0(cropTypes,collapse=', '),'. Using largest upper limits')
+        upperYield <- max(upperYield)
+        uprLimPlot <- max(uprLimPlot)
+        if(is.na(upperYield)|is.na(uprLimPlot)) stop('NA crop type/upper limit')
+      }
+    }
+  }
+  
+  #Check ground speed 
+  nSpeedMiss <- with(dat,sum(is.na(Speed_kmh))) #Missing speed numbers
+  if(nSpeedMiss>0){
+    propSpeedMiss <- nSpeedMiss/nrow(dat)
+    spdMsg <- paste0('Ground speed NA at ',nSpeedMiss,' points (',round(100*propSpeedMiss,1),'%)')
+    if(propSpeedMiss>0.9){
+      stop(spdMsg)
+    } else {
+      print(spdMsg) 
+      
+      #Fit simple LM to non-zero speed data
+      tempDat <- dat %>% 
+        filter(Speed_kmh!=0 & !is.na(Speed_kmh) & Speed_kmh<upperSpeed) %>% #Remove zeros, NAs, points above upper limit
+        mutate(predSpeed=3.6*Distance_m/Duration_s)
+      
+      speedMod <- lm(Speed_kmh ~ predSpeed,data=tempDat)
+      
+      if(is.null(figpath)){
+        figpath2 <- gsub('\\.csv$','_speedMod.png',newpath)
+      } else {
+        figpath2 <- gsub('\\.[a-z]{3}$','_speedMod.png',figpath)
+      }
+      
+      #Make speed prediction figure
+      png(figpath2,width=10, height=10, units = 'in', res = 200)
+      plot(predSpeed~Speed_kmh,data=tempDat,xlab='Measured Ground Speed (km/h)',
+           ylab='Predicted Ground Speed (km/h)',pch=19)
+      abline(speedMod,col='red'); abline(0,1,col='cyan',lty=2)
+      plotText <- paste0('y ~ ',round(coef(speedMod)[1],2),'+ ',
+                         round(coef(speedMod)[2],2),'x\nR^2 = ', 
+                         round(summary(speedMod)$r.squared,3),
+                         '\nMAE = ',round(mean(abs(residuals(speedMod))),3),
+                         '\nNumber of points filled in = ',nSpeedMiss)
+      text(x=max(tempDat$Speed_kmh)*0.15,y=max(tempDat$predSpeed)*0.9,plotText)
+      dev.off()
+      figPath <- NULL
+      
+      if(summary(speedMod)$r.squared<speedR2thresh){
+        warning(paste0('Bad ground speed predictions from Distance/Duration (R2<',speedR2thresh,'). Check output'))
+      }
+      
+      #Fills in missing speed measurements
+      dat <- dat %>% mutate(predSpeed=3.6*Distance_m/Duration_s) %>% 
+        mutate(predSpeed2=predict(speedMod,newdata=.)) %>% 
+        mutate(Speed_kmh = ifelse(is.na(Speed_kmh),predSpeed2,Speed_kmh)) %>% 
+        select(-predSpeed,-predSpeed2)
+      rm(tempDat,speedMod,plotText)
+    }
+  }
+  
+  #Run filters - TRUE indicates data point passed filtering process ("acceptable")
+  print('Running filters')
+  dat <- dat %>% 
+    #Very large outliers. Exact thresholds should be determined by the combine operator or agronomist
+    mutate(tooLarge = Yield_tha<upperYield) %>% 
+    #Raw yield outliers
+    mutate(qFilt = QuantileFilter(Yield_tha,q=0.98)) %>% 
+    #Extreme bearing changes (turning)
+    mutate(bFilt = bearingFilter(Track_deg,q=0.98)) %>% 
+    #Absolute speed outliers
+    mutate(speedFilt = QuantileFilter(Speed_kmh,q=0.98) & Speed_kmh<upperSpeed & 0<Speed_kmh) %>% 
+    #Speed differences (>20% change 2 steps forward and backward, suggested by
+    # Lyle et al 2014: https://doi.org/10.1007/s11119-013-9336-3)
+    mutate(dSpeedFilt = dSpeedFilter(Speed_kmh,l=c(-2,-1,1,2),perc = 0.2)) %>% 
+    #Points that are far away from eachother
+    mutate(posFilt = posFilter(.,q=0.995,upperOnly = TRUE))  
+  # #Swath widths smaller than 20% of the header bar - I think we can get around this by doing weighted sampling
+  # mutate(swathFilt = SwathWidth_m>max(SwathWidth_m)*0.2) 
+  
+  #Combine filter criteria
+  filtCrit <- with(dat, inBoundary & tooLarge & qFilt & bFilt & speedFilt & dSpeedFilt & posFilt)
+  
+  if(useVega){
+    #Spatial "inliers"
+    print('Running Vega filter')
+    dat <- dat %>% 
+      mutate(vegaFilt = vegaFilter(.,Yield_tha,nDist = 50,
+                                   cluster = cl,exclude = !filtCrit))
+  } else{
+    dat <- dat %>% mutate(vegaFilt = TRUE)   
+  }
+  
+  filtCrit <- filtCrit & dat$vegaFilt
+  
+  dat <- dat %>% 
+    mutate(allFilt = filtCrit) %>% 
+    mutate(Yield_tha_filt = ifelse(allFilt, Yield_tha, NA)) #Turns filtered values to NAs
+  
+  propFilt <- (sum(is.na(dat$Yield_tha_filt))/nrow(dat)) #Proportion of filtered data
+  if(0.5<propFilt){
+    filtCol <-  st_drop_geometry(dat) %>% #Proportion data dropped from each category
+      select(inBoundary:allFilt) %>% as.matrix() %>%
+      apply(.,2,function(x) round(mean(!x),2)) 
+    msg <- paste0(round(propFilt*100,1),'% of the data have been filtered. Check filtering categories:\n',
+                  paste(capture.output(print(filtCol)),collapse = "\n"))
+    sapply(strsplit(msg,'\n')[[1]],print)
+    # stop(msg)
+    warning(msg)
+  } else if(0.3<propFilt) {
+    warning(paste0(round(propFilt*100,1),'% of the data have been filtered'))
+  }
+  
+  #Checks for multiple combine IDs, and adjusts using a spatial GAM
+  
+  dat <- dat %>% 
+    bind_cols(st_coordinates(.)) %>% #Get x,y coords in meters
+    mutate(across(c(X,Y),~.x-mean(.x))) %>%  #Center coordinates
+    mutate(across(c(Grower:CombineID),factor)) %>% 
+    mutate(Date_Combine=factor(paste(Date_ymd,CombineID,sep='_')))
+  
+  if(length(unique(dat$Date_Combine))>1){ #If multiple combines/dates are present
+    
+    
+    errPath <- gsub('.tif','_ERROR.txt',fieldRastPath) #Error path
+    
+    #Fit combine-and-date yield model, with spatial smoother s(X,Y), then refit with autocorrelation term
+    try({
+      m1 <- bam(Yield_tha ~ Date_Combine + s(X,Y,k=200) + 0,data=dat,cluster=cl) #No rho term
+      ar1 <- acf(resid(m1),type = 'partial',plot=FALSE)$acf[1,,] #Autocorrelation term
+      m1 <- bam(Yield_tha ~ Date_Combine  + s(X,Y,k=200) + 0,data=dat,cluster=cl,rho=ar1) #Refit with rho
+      
+      #Back-correct estimated combine effects using AR1 model
+      modMat <- model.matrix(~ Date_Combine + 0,data=dat) #Model matrix
+      coefs <- coef(m1)[!grepl('s\\(',names(coef(m1)))] #Get coefficients
+      
+      #Maximum difference in size of coefficients
+      maxDiff <- max(abs(sapply(1:length(coefs),function(i,vec){ vec[i]/vec[-i]},vec=coefs)))
+      if(maxDiff>2){
+        stop(paste0('Large differences in estimated combine yield differences (',
+                    round(maxDiff,1),
+                    ' times). Is this from a single field or crop type?'))
+      }
+      
+    },outFile = errPath)  
+    
+    #If an error occurred during smoothing
+    if(file.exists(errPath)){
+      print(paste0('Error occurred during smoothing procedure for field ',
+                   fieldName,'. Data (n = ',nrow(dat),') may be too sparse.'))
+      next()
+    } else {
+      #Adjusted yield: subtracts combine/date, then adds back in an "average" combine/date effect
+      dat$Yield_tha <- dat$Yield_tha - (modMat %*% coefs)[,1] + mean(modMat %*% coefs) 
+      dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero   
+    }
+    
+  } else {
+    print('Single combine & harvest date, no adjustments needed')
+  }
+  
+  
+  #Filtered data plots
+  print('Making figures')
+  
+  palFun <- function(x){ #Palette function for figure
+    if(x==2) {
+      return(c('#FF0000','#000000')) #2 categories = red + black
+    } else {
+      RColorBrewer::brewer.pal(x,'RdYlGn')
+    }
+  }
+  
+  #Break yield into bins
+  
+  #Figure out upper limits for plots and filters
+  yldBreaks <- pretty(dat$Yield_tha_filt)[2:5] #"Pretty" breaks (without bottom and top)
+  yldBreaks <- yldBreaks[yldBreaks<=upperYield]
+  yldBreaks <- yldBreaks[!is.na(yldBreaks)]
+  if(length(yldBreaks)<2) yldBreaks <- median(dat$Yield_tha_filt,na.rm = TRUE)
+  
+  dat$yield <- makeBreaks(dat$Yield_tha,b=yldBreaks) #Raw yield
+  dat$yieldFilt <- makeBreaks(dat$Yield_tha_filt,b=yldBreaks) #Filtered yield
+  
+  #Columns to display
+  dispCols <- c('vegaFilt','tooLarge','qFilt','bFilt','speedFilt','dSpeedFilt',
+                'posFilt','allFilt','yield','yieldFilt')
+  if(length(unique(dat$CombineID))>1) dispCols <- c(dispCols,'CombineID')
+  if(is.null(figpath)) figpath <- gsub('\\.csv$','.png',newpath)
+  #Make figure
+  png(figpath,width=10, height=6, units = 'in', res = 200)
+  plot(dat[dispCols],pch=19,cex=0.05,pal=palFun,max.plot=11)
+  dev.off()
+  
+  b <- Sys.time()
+  
+  print(paste0('Filtered ',sum(is.na(dat$Yield_tha_filt)),' of ',nrow(dat),' records (',
+               round(100*sum(is.na(dat$Yield_tha_filt))/nrow(dat),2),'%). Time: ',
+               round(difftime(b,a,units = 'mins'),2),' mins'))
+  
+  #Organize data and write csv
+  if(keepFiltCols){ #If filter columns are kept
+    cNames <- c(cNames,'tooLarge','vegaFilt',
+                'qFilt', 'bFilt', 'speedFilt','dSpeedFilt','posFilt')
+  } else { 
+    dat <- dat %>% filter(!is.na(Yield_tha_filt)) #Don't filter data if filter columns are retained
+  }
+  
+  dat <- dat %>% st_drop_geometry() #Remove feature geometry
+  dat <- dat[,cNames] #Remove columns not found in original
+  
+  if(is.null(newpath)){ #Overwrite original 
+    newpath <- path
+    print(paste0('Overwriting ',filename))
+  } 
+  
+  print('Writing cleaned csv')
+  if(fastRead){
+    data.table::fwrite(dat,newpath,sep=",",row.names = FALSE)
+  } else {
+    write.csv(dat,newpath,row.names = FALSE) 
+  }
+  print(paste0('Finished. Time: ', Sys.time()))
+}
+
+
+
+#Function to clean yield data csvs and adjust for combine differences
+
+# newpath=NULL : path for cleaned csv to be written
+# figpath=NULL : path for figures to be written
+# upperYield=NULL : upper bound on yield (t/ha)
+# boundaryPath=NULL : boundary shapefile (optional)
+# useVega=TRUE : use Vega spatial inlier filter?
+# keepFiltCols=FALSE : keep filter columns?
+# ncore=1 : number of cores to use in processing
+# fastRead=TRUE: use "fast" read/write csv commands?
+# speedR2thresh = 0.95: R2 threshold for speed-distance correlation models used to fill in speed gaps (lower than this, and model will quit)
+# upperSpeed = 15: upper limit for combine ground speed (km/hr); "usual" ground speed for actual harvest is <5 mph (8kph)
+
+clean_csv2 <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,
+                       boundaryPath=NULL,useVega=TRUE,keepFiltCols=FALSE,
+                       ncore=1,fastRead=TRUE,speedR2thresh=0.95,upperSpeed=15){
+  library(tidyverse)
+  library(sf)
+  if(ncore>1){
+    library(parallel)
+    cl <- makeCluster(ncore)
+    on.exit({stopCluster(cl); rm(list=ls());gc()}) #Cleanup on exit
+    # print(paste0('Using ',ncore,' cores for parallel processing'))
+  } else {
+    cl <- NULL
+    on.exit({rm(list=ls());gc()})
+  }
+  
+  #FUNCTIONS
+  
+  #Function to filter anything above certain quantiles
+  QuantileFilter <- function(x,quant=0.99){ 
+    l <- c((1-quant)/2,1-(1-quant)/2) #Symmetric quantiles
+    x>quantile(x,l[1]) & x<quantile(x,l[2]) 
+  }
+  
+  #Filter differences in track angles 
+  bearingFilter <- function(bearing,q=NULL,z=NULL,returnDiffs=FALSE){
+    if(!xor(is.null(q),is.null(z))&!returnDiffs){
+      stop('Input quantiles or Z-score')
+    } else if(sum(is.na(bearing))==length(bearing)){
+      warning('No bearings (track angles) found. Skipping filter')
+      return(rep(TRUE,length(bearing)))
+    }
+    #Difference in compass bearings (in degrees)
+    bearingDiff <- function(x1,x2){
+      x <- x1-x2
+      x <- ifelse(abs(x)>180,x-(360*sign(x)),x) #Angle differences can't be >180
+      return(x)
+    }
+    
+    #Looks 1 point ahead and behind
+    bd <- cbind(bearingDiff(lag(bearing),bearing),
+                bearingDiff(lead(bearing),bearing))
+    #Maximum bearing difference ahead and behind
+    bd <- apply(bd,1,function(x){
+      max(abs(x),na.rm=TRUE)*sign(x[which.max(abs(x))])
+    }) 
+    
+    if(returnDiffs) return(bd) #Return bearing differences only, without filtering
+    
+    if(!is.null(q)){
+      ret <- QuantileFilter(bd,q=q)
+    } else {
+      ret <- ZscoreFilter(bd,z=z)
+    }
+    return(ret)
+  }
+  
+  #Positional difference filter - filters out very distant and very close points
+  posFilter <- function(data,q=NULL,returnDiffs=FALSE,upperOnly=FALSE){ 
+    if(is.null(q)&!returnDiffs) stop('Input upper quantile')
+    
+    if(units(st_distance(data[1,],data[2,]))$numerator!='m'){
+      warning('Position differences not in meters')
+    } 
+    coords <- st_coordinates(data) #Get coordinates
+    pdiff <- sapply(1:(nrow(coords)-1),function(i){ #Distances between points
+      as.numeric(dist(coords[i:(i+1),]))
+    }) 
+    pdiff <- cbind(c(pdiff,NA),c(NA,pdiff)) #Forward and backward lags
+    pdiff <- apply(pdiff,1,max,na.rm=TRUE) #Maximum distance ahead and behind
+    if(returnDiffs){
+      return(pdiff)
+    } else {
+      if(upperOnly){
+        return(quantile(pdiff,q)>pdiff) #Upper quantile  
+      } else {
+        return(QuantileFilter(pdiff,q)) #2-sided quantiles (upper and lower)  
+      }
+    }
+  }
+  
+  #Filter for (forward and backward) lagged speed differences.
+  dSpeedFilter <- function(speed,l=c(-1,1),perc=0.2){ 
+    #Overloaded lag function that takes negative values
+    lag2 <- function(x,n){
+      if(n==0) {
+        return(x) #No lag
+      } else if(n>0){
+        lag(x,n) #Positive lag
+      } else {
+        lead(x,abs(n)) #Negative lag
+      } 
+    }
+    
+    llist <- sapply(l,function(x) (lag2(speed,x)-speed)/lag2(speed,x)) #Matrix of % diffs
+    
+    #Are any lagged speed values > percent change threshold?
+    ret <- !apply(llist,1,function(y) any(abs(y)[!is.na(y)]>perc))
+    
+    return(ret)
+  }
+  
+  
+  # Make polygons from width, dist, and angle measurements, centered on location from dat
+  makePolys <- function(dat,width='w',dist='d',angle='a',backwards=FALSE){
+    
+    gType <- dat %>% st_geometry_type(FALSE) #Geometry type
+    
+    if(gType!='POINT') warning(paste('Input data type is',gType,'not POINT',sep=' '))
+    
+    rectFun <- function(x,y,w,d,a,b){
+      #Function to create corners of rotated rectangle from:
+      #   starting location (x,y),
+      #   width (w), distance (d), and angle (a)
+      #   rotate rectangles 180 degrees? (b)
+      rotate <- ifelse(b,90,270)
+      a <- (rotate-a)*pi/180 #90-angle in radians. 
+      v <- c(x,y) #Starting point
+      v1 <- c(d*cos(a),d*sin(a)) #Vectors to add together to get corners
+      v2 <- c(-(w/2)*sin(a),(w/2)*cos(a))
+      return(rbind(v+v2,v+v1+v2,v+v1-v2,v-v2,v+v2)) #Corners of rotated rectangle
+    }
+    datCRS <- st_crs(dat) #Coordinate system from dat
+    #Apply rectFun to all rows in dat. Probably could be done through map or some other purrr related thing.
+    xcoord <- st_coordinates(dat)[,1]
+    ycoord  <- st_coordinates(dat)[,2]
+    polys <- lapply(1:nrow(dat),function(i){
+      r <- rectFun(x = xcoord[i], y = ycoord[i],  w = dat[[width]][i],  d = dat[[dist]][i],
+                   a = dat[[angle]][i], b = backwards)
+      st_polygon(list(r))
+    })
+    #Combine dat with new polygon geometry, and add original CRS
+    dat2 <- st_sf(st_drop_geometry(dat),geometry=st_sfc(polys)) %>% st_set_crs(datCRS)
+    return(dat2)
+  }
+  
+  a <- Sys.time()
+  
+  #Read in data
+  if(!file.exists(path)) stop('File ',path,' not found')
+  filename <- strsplit(path,'/')[[1]] 
+  filename <- filename[length(filename)]
+  
+  cClass <- c(rep('numeric',2),rep('character',7),rep('numeric',9))
+  if(fastRead){
+    dat <- data.table::fread(path,sep=",",colClasses = cClass)
+    dat <- data.frame(dat)  
+  } else {
+    dat <- read.csv(path,colClasses = cClass)
+  }
+  print(paste0('Read in ',basename(getwd()),' / ',filename,' : ',nrow(dat),' data points -------------------------'))
+  print(paste0('Time: ', Sys.time()))
+  
+  if(length(unique(dat$Field))>1) stop('Multiple field names: has this file been properly split?') 
+  
+  #Add spatial info
+  dat <- dat %>% 
+    st_as_sf(coords=c('Longitude','Latitude'),remove=FALSE) %>% #Add spatial feature info
+    st_set_crs(4326) %>% #Lat-lon format 
+    st_transform(3401) %>% #Transform to UTM
+    mutate(E=st_coordinates(.)[,1],N=st_coordinates(.)[,2]) %>% #Create N and E column
+    mutate(E=(E-mean(E)),N=(N-mean(N))) #Center N and E values
+  
+  fieldName <- unique(dat$Field)
+  
+  #Read in boundary around individual field
+  if(file.exists(bPath)){
+    boundPoly <- read_sf(bPath) %>%  
+      filter(Field==fieldName) 
+    if(nrow(boundPoly)==0) stop('No boundary found for Field ',fieldName)
+  } else {
+    stop('No field boundary shapefile provided')
+  }
+  
+  cNames <- colnames(dat) #Column names to retain
+  
+  
+  #Points outside of field boundaries
+  if(is.null(boundaryPath)){
+    print('No field boundary provided. Using all data points')
+    dat$inBoundary <- TRUE
+  } else {
+    if(!file.exists(boundaryPath)) stop('File ',path,' not found')
+    fieldBoundary <- read_sf(boundaryPath) %>% st_transform(3401)
+    dat$inBoundary <- apply(st_contains(fieldBoundary,dat,sparse = FALSE),2,any)
+  }
+  
+  #Check for point coverage across boundary
+  
+  yieldArea <- makePolys(dat, width='Width_m', dist = 'Distance_m',
+                         angle = 'Bearing_deg')
+  
+  #If less than 50% of field area has data
+  if(st_area(yieldArea)<st_area(boundPoly)*0.5){
+    if(st_area(yieldArea)<st_area(boundPoly)*0.25){
+      stop("Less than 25% of field boundary area has yield data. Skipping")
+    } else {
+      warning("Less than 50% of field boundary area has yield data.")
+    }
+  }
+  
+  #Removes data points above upper limit thresholds
+  if(is.null(upperYield)){
+    print(paste0('Using default upper yield limit'))
+    
+    #These are rough estimates of "reasonable" maximum yield
+    defaultLims <- data.frame(crop=c('wheat','barley','rye','canola','mustard','peas','flax','oats','lentil'),
+                              upr=c(10.75,10.75,10.75,10,10,10,8,10,8),
+                              uprPlot=c(6,6,6,6,6,6,6,6,6)) #Upper limits for plots
+    
+    cropTypes <- unique(dat$Crop) #Unique crop types
+    
+    #Matrix matching listed crop types (rows) to ones from data (columns)
+    chooseCrops <- do.call('rbind',lapply(defaultLims$crop,function(x) grepl(x,cropTypes,ignore.case = TRUE)))
+    colnames(chooseCrops) <- cropTypes
+    rownames(chooseCrops) <- defaultLims$crop
+    
+    if(sum(chooseCrops)==0){
+      warning(paste0('Crop type ',paste0(cropTypes,collapse=', '),' not listed in threshold table. Removing upper limit'))
+      upperYield <- Inf
+      uprLimPlot <- quantile(dat$Yield_tha,0.95) #Upper limit for filter/plots
+    } else {
+      if(any(apply(chooseCrops,2,sum)==0)){
+        warning('Crop type ',paste0(cropTypes[apply(chooseCrops,2,sum)==0],collapse=', '),' removed: no matches.')
+      }
+      cropTypes <- defaultLims$crop[apply(chooseCrops,1,any)] #reset names of croptypes
+      upperYield <- defaultLims$upr[apply(chooseCrops,1,any)] #Upper limit for filter
+      uprLimPlot <- defaultLims$uprPlot[apply(chooseCrops,1,any)] #Upper limit for plotted yield
+      if(length(cropTypes)>1){
+        warning('Multiple crop types: ',paste0(cropTypes,collapse=', '),'. Using largest upper limits')
+        upperYield <- max(upperYield)
+        uprLimPlot <- max(uprLimPlot)
+        if(is.na(upperYield)|is.na(uprLimPlot)) stop('NA crop type/upper limit')
+      }
+    }
+  }
+  
+  #Check ground speed 
+  nSpeedMiss <- with(dat,sum(is.na(Speed_kmh))) #Missing speed numbers
+  if(nSpeedMiss>0){
+    propSpeedMiss <- nSpeedMiss/nrow(dat)
+    spdMsg <- paste0('Ground speed NA at ',nSpeedMiss,' points (',round(100*propSpeedMiss,1),'%)')
+    if(propSpeedMiss>0.9){
+      stop(spdMsg)
+    } else {
+      print(spdMsg) 
+      
+      #Fit simple LM to non-zero speed data
+      tempDat <- dat %>% 
+        filter(Speed_kmh!=0 & !is.na(Speed_kmh) & Speed_kmh<upperSpeed) %>% #Remove zeros, NAs, points above upper limit
+        mutate(predSpeed=3.6*Distance_m/Duration_s)
+      
+      speedMod <- lm(Speed_kmh ~ predSpeed,data=tempDat)
+      
+      if(is.null(figpath)){
+        figpath2 <- gsub('\\.csv$','_speedMod.png',newpath)
+      } else {
+        figpath2 <- gsub('\\.[a-z]{3}$','_speedMod.png',figpath)
+      }
+      
+      #Make speed prediction figure
+      png(figpath2,width=10, height=10, units = 'in', res = 200)
+      plot(predSpeed~Speed_kmh,data=tempDat,xlab='Measured Ground Speed (km/h)',
+           ylab='Predicted Ground Speed (km/h)',pch=19)
+      abline(speedMod,col='red'); abline(0,1,col='cyan',lty=2)
+      plotText <- paste0('y ~ ',round(coef(speedMod)[1],2),'+ ',
+                         round(coef(speedMod)[2],2),'x\nR^2 = ', 
+                         round(summary(speedMod)$r.squared,3),
+                         '\nMAE = ',round(mean(abs(residuals(speedMod))),3),
+                         '\nNumber of points filled in = ',nSpeedMiss)
+      text(x=max(tempDat$Speed_kmh)*0.15,y=max(tempDat$predSpeed)*0.9,plotText)
+      dev.off()
+      figPath <- NULL
+      
+      if(summary(speedMod)$r.squared<speedR2thresh){
+        warning(paste0('Bad ground speed predictions from Distance/Duration (R2<',speedR2thresh,'). Check output'))
+      }
+      
+      #Fills in missing speed measurements
+      dat <- dat %>% mutate(predSpeed=3.6*Distance_m/Duration_s) %>% 
+        mutate(predSpeed2=predict(speedMod,newdata=.)) %>% 
+        mutate(Speed_kmh = ifelse(is.na(Speed_kmh),predSpeed2,Speed_kmh)) %>% 
+        select(-predSpeed,-predSpeed2)
+      rm(tempDat,speedMod,plotText)
+    }
+  }
+  
+  #Run filters - TRUE indicates data point passed filtering process ("acceptable")
+  print('Running filters')
+  dat <- dat %>% 
+    #Very large outliers. Exact thresholds should be determined by the combine operator or agronomist
+    mutate(tooLarge = Yield_tha<upperYield) %>% 
+    #Raw yield outliers
+    mutate(qFilt = QuantileFilter(Yield_tha,q=0.98)) %>% 
+    #Extreme bearing changes (turning)
+    mutate(bFilt = bearingFilter(Track_deg,q=0.98)) %>% 
+    #Absolute speed outliers
+    mutate(speedFilt = QuantileFilter(Speed_kmh,q=0.98) & Speed_kmh<upperSpeed & 0<Speed_kmh) %>% 
+    #Speed differences (>20% change 2 steps forward and backward, suggested by
+    # Lyle et al 2014: https://doi.org/10.1007/s11119-013-9336-3)
+    mutate(dSpeedFilt = dSpeedFilter(Speed_kmh,l=c(-2,-1,1,2),perc = 0.2)) %>% 
+    #Points that are far away from eachother
+    mutate(posFilt = posFilter(.,q=0.995,upperOnly = TRUE))  
+  # #Swath widths smaller than 20% of the header bar - I think we can get around this by doing weighted sampling
+  # mutate(swathFilt = SwathWidth_m>max(SwathWidth_m)*0.2) 
+  
+  #Combine filter criteria
+  filtCrit <- with(dat, inBoundary & tooLarge & qFilt & bFilt & speedFilt & dSpeedFilt & posFilt)
+  
+  if(useVega){
+    #Spatial "inliers"
+    print('Running Vega filter')
+    dat <- dat %>% 
+      mutate(vegaFilt = vegaFilter(.,Yield_tha,nDist = 50,
+                                   cluster = cl,exclude = !filtCrit))
+  } else{
+    dat <- dat %>% mutate(vegaFilt = TRUE)   
+  }
+  
+  filtCrit <- filtCrit & dat$vegaFilt
+  
+  dat <- dat %>% 
+    mutate(allFilt = filtCrit) %>% 
+    mutate(Yield_tha_filt = ifelse(allFilt, Yield_tha, NA)) #Turns filtered values to NAs
+  
+  propFilt <- (sum(is.na(dat$Yield_tha_filt))/nrow(dat)) #Proportion of filtered data
+  if(0.5<propFilt){
+    filtCol <-  st_drop_geometry(dat) %>% #Proportion data dropped from each category
+      select(inBoundary:allFilt) %>% as.matrix() %>%
+      apply(.,2,function(x) round(mean(!x),2)) 
+    msg <- paste0(round(propFilt*100,1),'% of the data have been filtered. Check filtering categories:\n',
+                  paste(capture.output(print(filtCol)),collapse = "\n"))
+    sapply(strsplit(msg,'\n')[[1]],print)
+    # stop(msg)
+    warning(msg)
+  } else if(0.3<propFilt) {
+    warning(paste0(round(propFilt*100,1),'% of the data have been filtered'))
+  }
+  
+  #Checks for multiple combine IDs, and adjusts using a spatial GAM
+  
+  dat <- dat %>% 
+    bind_cols(st_coordinates(.)) %>% #Get x,y coords in meters
+    mutate(across(c(X,Y),~.x-mean(.x))) %>%  #Center coordinates
+    mutate(across(c(Grower:CombineID),factor)) %>% 
+    mutate(Date_Combine=factor(paste(Date_ymd,CombineID,sep='_')))
+  
+  if(length(unique(dat$Date_Combine))>1){ #If multiple combines/dates are present
+    
+    errPath <- gsub('.tif','_ERROR.txt',fieldRastPath) #Error path
+    
+    #Fit combine-and-date yield model, with spatial smoother s(X,Y), then refit with autocorrelation term
+    try({
+      m1 <- bam(Yield_tha ~ Date_Combine + s(X,Y,k=200) + 0,data=dat,cluster=cl) #No rho term
+      ar1 <- acf(resid(m1),type = 'partial',plot=FALSE)$acf[1,,] #Autocorrelation term
+      m1 <- bam(Yield_tha ~ Date_Combine  + s(X,Y,k=200) + 0,data=dat,cluster=cl,rho=ar1) #Refit with rho
+      
+      #Back-correct estimated combine effects using AR1 model
+      modMat <- model.matrix(~ Date_Combine + 0,data=dat) #Model matrix
+      coefs <- coef(m1)[!grepl('s\\(',names(coef(m1)))] #Get coefficients
+      
+      #Maximum difference in size of coefficients
+      maxDiff <- max(abs(sapply(1:length(coefs),function(i,vec){ vec[i]/vec[-i]},vec=coefs)))
+      if(maxDiff>2){
+        stop(paste0('Large differences in estimated combine yield differences (',
+                    round(maxDiff,1),
+                    ' times). Is this from a single field or crop type?'))
+      }
+      
+    },outFile = errPath)  
+    
+    #If an error occurred during smoothing
+    if(file.exists(errPath)){
+      print(paste0('Error occurred during smoothing procedure for field ',
+                   fieldName,'. Data (n = ',nrow(dat),') may be too sparse.'))
+      next()
+    } else {
+      #Adjusted yield: subtracts combine/date, then adds back in an "average" combine/date effect
+      dat$Yield_tha <- dat$Yield_tha - (modMat %*% coefs)[,1] + mean(modMat %*% coefs) 
+      dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero   
+    }
+    
+  } else {
+    print('Single combine & harvest date, no adjustments needed')
+  }
+  
+  #Filtered data plots
+  print('Making figures')
+  
+  palFun <- function(x){ #Palette function for figure
+    if(x==2) {
+      return(c('#FF0000','#000000')) #2 categories = red + black
+    } else {
+      RColorBrewer::brewer.pal(x,'RdYlGn')
+    }
+  }
+
+  #Break yield into bins
+  
+  #Figure out upper limits for plots and filters
+  yldBreaks <- pretty(dat$Yield_tha_filt)[2:5] #"Pretty" breaks (without bottom and top)
+  yldBreaks <- yldBreaks[yldBreaks<=upperYield]
+  yldBreaks <- yldBreaks[!is.na(yldBreaks)]
+  if(length(yldBreaks)<2) yldBreaks <- median(dat$Yield_tha_filt,na.rm = TRUE)
+  
+  dat$yield <- makeBreaks(dat$Yield_tha,b=yldBreaks) #Raw yield
+  dat$yieldFilt <- makeBreaks(dat$Yield_tha_filt,b=yldBreaks) #Filtered yield
+  
+  #Columns to display
+  dispCols <- c('vegaFilt','tooLarge','qFilt','bFilt','speedFilt','dSpeedFilt',
+                'posFilt','allFilt','yield','yieldFilt')
+  if(length(unique(dat$CombineID))>1) dispCols <- c(dispCols,'CombineID')
+  if(is.null(figpath)) figpath <- gsub('\\.csv$','.png',newpath)
+  #Make figure
+  png(figpath,width=10, height=6, units = 'in', res = 200)
+  plot(dat[dispCols],pch=19,cex=0.05,pal=palFun,max.plot=11)
+  dev.off()
+  
+  b <- Sys.time()
+  
+  print(paste0('Filtered ',sum(is.na(dat$Yield_tha_filt)),' of ',nrow(dat),' records (',
+               round(100*sum(is.na(dat$Yield_tha_filt))/nrow(dat),2),'%). Time: ',
+               round(difftime(b,a,units = 'mins'),2),' mins'))
+  
+  #Organize data and write csv
+  if(keepFiltCols){ #If filter columns are kept
+    cNames <- c(cNames,'tooLarge','vegaFilt',
+                'qFilt', 'bFilt', 'speedFilt','dSpeedFilt','posFilt')
+  } else { 
+    dat <- dat %>% filter(!is.na(Yield_tha_filt)) #Don't filter data if filter columns are retained
+  }
+  
+  dat <- dat %>% st_drop_geometry() #Remove feature geometry
+  dat <- dat[,cNames] #Remove columns not found in original
+  
+  if(is.null(newpath)){ #Overwrite original 
+    newpath <- path
+    print(paste0('Overwriting ',filename))
+  } 
+  
+  print('Writing cleaned csv')
+  if(fastRead){
+    data.table::fwrite(dat,newpath,sep=",",row.names = FALSE)
+  } else {
+    write.csv(dat,newpath,row.names = FALSE) 
+  }
+  print(paste0('Finished. Time: ', Sys.time()))
+}
+
 
 #Function to create boundary multipolygon from crop csvs
 # Output is same format as SMS output - needs to be further processed using cropTypeACI() to get satellite crop type metrics
