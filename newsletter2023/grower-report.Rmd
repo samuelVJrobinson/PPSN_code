@@ -46,7 +46,7 @@ knitr::opts_chunk$set(echo = FALSE)
 <!-- \end{center} -->
 <!-- \noindent -->
 <!-- \includegraphics[width=\paperwidth]{./PPSNnewsletter_Jul4.pdf} -->
-\includepdf[pages=-]{PPSNnewsletter_Aug24.pdf}
+\includepdf[pages=-]{PPSNnewsletter_Jul4.pdf}
 \pagebreak
 
 \begin{tikzpicture}[remember picture,overlay]

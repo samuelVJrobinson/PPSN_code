@@ -17,9 +17,12 @@ mkMap <- function(path){ #Make simple maps of shapefiles
   ggsave(filename=gsub('.shp','.png',path),plot=p,scale = 3)
 }
 
+
+#NOT WORKING for some reason
 for(i in 1:length(bFiles)){
   cropTypeACI(bFiles[i]) #Read and check boundary polygons
 }
+# debugonce(cropTypeACI)
 
 for(i in 1:length(bFiles)){ #Make simple maps
   mkMap(bFiles[i])

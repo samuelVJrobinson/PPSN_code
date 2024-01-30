@@ -3,7 +3,7 @@ source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
 
 # Basic operations - unzip and process csv ----------------------------------------
 
-unzipAll("D:\\geoData\\YieldStorageRaw\\Fall 2023 Data\\202215 Yield Data Files 2023\\202215 Yield Data Files",rmOld = TRUE)
+unzipAll("D:\\geoData\\YieldStorageRaw\\Fall 2023 Data\\202218 Yield Data Files 2023\\Nunebor 2023 Yield Files",rmOld = TRUE)
 
 dirPath <- "D:\\geoData\\SMSexport\\202231 HILLSBORO FARMS"
 
@@ -100,7 +100,6 @@ debugonce(clean_csv)
 
 # Next step - rasterize yield data ----------------------------------------
 
-
 #Check all folders and rasterize where needed
 
 if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
@@ -158,21 +157,21 @@ rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM ST
 
 # Other things ------------------------------------------------------------
 
-#Create boundary files for non-SMS directories
-
-fName <- c("202230 HANSBREK FARMS LTD",
-           "202244 MARC AND CHERYL NOREEN",
-           "202261 DAVID FORSEILLE")
-
-for(f in fName){
-  csv2Boundary(dirPath = paste0("D:\\geoData\\SMSexport\\",f,"\\clean"),
-               fileName = paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",f,"_poly.shp"))  
-}
-
-for(f in fName){
-  csv2Boundary(dirPath = paste0("D:\\geoData\\SMSexport\\",f,"\\clean"),
-               fileName = paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",f,"_poly.shp"))  
-}
+# #Create boundary files for non-SMS directories
+# 
+# fName <- c("202230 HANSBREK FARMS LTD",
+#            "202244 MARC AND CHERYL NOREEN",
+#            "202261 DAVID FORSEILLE")
+# 
+# for(f in fName){
+#   csv2Boundary(dirPath = paste0("D:\\geoData\\SMSexport\\",f,"\\clean"),
+#                fileName = paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",f,"_poly.shp"))  
+# }
+# 
+# for(f in fName){
+#   csv2Boundary(dirPath = paste0("D:\\geoData\\SMSexport\\",f,"\\clean"),
+#                fileName = paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",f,"_poly.shp"))  
+# }
 
 
 

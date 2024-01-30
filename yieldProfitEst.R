@@ -82,6 +82,16 @@ uprYieldLim <- canProf[sapply(canProf,length)==4] %>%
 #202217: chickpeas have poor profits, but grower says otherwise
 # - Field =  M&M Wade: yield data says "Peas", Satellite data says "Chickpeas (66%) or Lentils (27%) ", Metadata says "Canola, Peas, Spring Wheat"
 
+#202239: weird low yield spike for lentils - removed weird split fields
+# canProf[[which(grepl('202239',names(canProf)))]] %>% 
+#   separate_wider_delim('FieldYear',delim = '_',names=c('Field','Year')) %>% 
+#   filter(Year=='2022',CropType=='Lentils') %>% 
+#   filter(Yield_buAc<100) %>% 
+#   # ggplot(aes(x=Field,y=Profit_ac))+geom_boxplot()
+#   ggplot(aes(x=Yield_buAc))+geom_histogram()+
+#   facet_wrap(~Field)
+
+
 for(i in 1:length(canProf)){
   if(class(canProf[[i]])=='logical') next
   
@@ -89,11 +99,11 @@ for(i in 1:length(canProf)){
   gName <- growerDat$FirstName[which(growerDat$GrowerID==gID)]
   fName <- growerDat$BusinessName[which(growerDat$GrowerID==gID)]
   
-  # #Skip existing reports (comment out to replace)
-  # if(file.exists(paste0('./reports/',gID,'-report.pdf'))){ 
-  #   print(paste0('File ',paste0('./reports/',gID,'-report.pdf'),' already exists'))
-  #   next
-  # }
+  #Skip existing reports (comment out to replace)
+  if(file.exists(paste0('./reports/',gID,'-report.pdf'))){
+    print(paste0('File ',paste0('./reports/',gID,'-report.pdf'),' already exists'))
+    next
+  }
   
   #Data for grower i
   temp <- canProf[[i]] %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
