@@ -839,7 +839,8 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
     } 
     tempFun <- function(u,xx){ #Transforms and gets codes from raster
       xx <- st_transform(xx,st_crs(rasts[[u]]))
-      suppressWarnings(aggregate(rasts[[u]],xx,labFun,N=5)$Code) #Warnings from mismatched EPSG codes
+      a <- try(suppressWarnings(aggregate(rasts[[u]],xx,labFun,N=5)$Code),TRUE) #Warnings from mismatched EPSG codes  
+      if(class(a)=='try-error') return("NA_0,NA_0,NA_0,NA_0,NA_0") else return(a)
     }
     ret <- sapply(use,tempFun,xx=x)
     if(length(ret)>1){
