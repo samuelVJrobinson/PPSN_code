@@ -249,6 +249,127 @@ fix_names <- function(filedir){
   
 }
 
+#Convenience functions used in clean_csv
+
+#Function to filter anything above certain quantiles
+QuantileFilter <- function(x,quant=0.99){ 
+  l <- c((1-quant)/2,1-(1-quant)/2) #Symmetric quantiles
+  x>quantile(x,l[1]) & x<quantile(x,l[2]) 
+}
+
+#Filter differences in track angles 
+bearingFilter <- function(bearing,q=NULL,z=NULL,returnDiffs=FALSE){
+  if(!xor(is.null(q),is.null(z))&!returnDiffs){
+    stop('Input quantiles or Z-score')
+  } else if(sum(is.na(bearing))==length(bearing)){
+    warning('No bearings (track angles) found. Skipping filter')
+    return(rep(TRUE,length(bearing)))
+  }
+  #Difference in compass bearings (in degrees)
+  bearingDiff <- function(x1,x2){
+    x <- x1-x2
+    x <- ifelse(abs(x)>180,x-(360*sign(x)),x) #Angle differences can't be >180
+    return(x)
+  }
+  
+  #Looks 1 point ahead and behind
+  bd <- cbind(bearingDiff(lag(bearing),bearing),
+              bearingDiff(lead(bearing),bearing))
+  #Maximum bearing difference ahead and behind
+  bd <- apply(bd,1,function(x){
+    max(abs(x),na.rm=TRUE)*sign(x[which.max(abs(x))])
+  }) 
+  
+  if(returnDiffs) return(bd) #Return bearing differences only, without filtering
+  
+  if(!is.null(q)){
+    ret <- QuantileFilter(bd,q=q)
+  } else {
+    ret <- ZscoreFilter(bd,z=z)
+  }
+  return(ret)
+}
+
+#Positional difference filter - filters out very distant and very close points
+posFilter <- function(data,q=NULL,returnDiffs=FALSE,upperOnly=FALSE){ 
+  if(is.null(q)&!returnDiffs) stop('Input upper quantile')
+  
+  if(units(st_distance(data[1,],data[2,]))$numerator!='m'){
+    warning('Position differences not in meters')
+  } 
+  coords <- st_coordinates(data) #Get coordinates
+  pdiff <- sapply(1:(nrow(coords)-1),function(i){ #Distances between points
+    as.numeric(dist(coords[i:(i+1),]))
+  }) 
+  pdiff <- cbind(c(pdiff,NA),c(NA,pdiff)) #Forward and backward lags
+  pdiff <- apply(pdiff,1,max,na.rm=TRUE) #Maximum distance ahead and behind
+  if(returnDiffs){
+    return(pdiff)
+  } else {
+    if(upperOnly){
+      return(quantile(pdiff,q)>pdiff) #Upper quantile  
+    } else {
+      return(QuantileFilter(pdiff,q)) #2-sided quantiles (upper and lower)  
+    }
+  }
+}
+
+#Filter for (forward and backward) lagged speed differences.
+dSpeedFilter <- function(speed,l=c(-1,1),perc=0.2){ 
+  #Overloaded lag function that takes negative values
+  lag2 <- function(x,n){
+    if(n==0) {
+      return(x) #No lag
+    } else if(n>0){
+      lag(x,n) #Positive lag
+    } else {
+      lead(x,abs(n)) #Negative lag
+    } 
+  }
+  
+  llist <- sapply(l,function(x) (lag2(speed,x)-speed)/lag2(speed,x)) #Matrix of % diffs
+  
+  #Are any lagged speed values > percent change threshold?
+  ret <- !apply(llist,1,function(y) any(abs(y)[!is.na(y)]>perc))
+  
+  return(ret)
+}
+
+
+# Make polygons from width, dist, and angle measurements, centered on location from dat
+makePolys <- function(dat,width='w',dist='d',angle='a',backwards=FALSE){
+  
+  gType <- dat %>% st_geometry_type(FALSE) #Geometry type
+  
+  if(gType!='POINT') warning(paste('Input data type is',gType,'not POINT',sep=' '))
+  
+  rectFun <- function(x,y,w,d,a,b){
+    #Function to create corners of rotated rectangle from:
+    #   starting location (x,y),
+    #   width (w), distance (d), and angle (a)
+    #   rotate rectangles 180 degrees? (b)
+    rotate <- ifelse(b,90,270)
+    a <- (rotate-a)*pi/180 #90-angle in radians. 
+    v <- c(x,y) #Starting point
+    v1 <- c(d*cos(a),d*sin(a)) #Vectors to add together to get corners
+    v2 <- c(-(w/2)*sin(a),(w/2)*cos(a))
+    return(rbind(v+v2,v+v1+v2,v+v1-v2,v-v2,v+v2)) #Corners of rotated rectangle
+  }
+  datCRS <- st_crs(dat) #Coordinate system from dat
+  #Apply rectFun to all rows in dat. Probably could be done through map or some other purrr related thing.
+  xcoord <- st_coordinates(dat)[,1]
+  ycoord  <- st_coordinates(dat)[,2]
+  polys <- lapply(1:nrow(dat),function(i){
+    r <- rectFun(x = xcoord[i], y = ycoord[i],  w = dat[[width]][i],  d = dat[[dist]][i],
+                 a = dat[[angle]][i], b = backwards)
+    st_polygon(list(r))
+  })
+  #Combine dat with new polygon geometry, and add original CRS
+  dat2 <- st_sf(st_drop_geometry(dat),geometry=st_sfc(polys)) %>% st_set_crs(datCRS)
+  return(dat2)
+}
+
+
 #"Inlier" spatial filtering procedure from Vega et al 2019, https://doi.org/10.1007/s11119-018-09632-8 
 #written to work with sf + dplyr. Returns boolean
 vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=NULL,chunksize=7500,exclude=NULL){
@@ -343,92 +464,6 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,boundaryPat
   } else {
     cl <- NULL
     on.exit({rm(list=ls());gc()})
-  }
-  
-  #FUNCTIONS
-  
-  #Function to filter anything above certain quantiles
-  QuantileFilter <- function(x,quant=0.99){ 
-    l <- c((1-quant)/2,1-(1-quant)/2) #Symmetric quantiles
-    x>quantile(x,l[1]) & x<quantile(x,l[2]) 
-  }
-  
-  #Filter differences in track angles 
-  bearingFilter <- function(bearing,q=NULL,z=NULL,returnDiffs=FALSE){
-    if(!xor(is.null(q),is.null(z))&!returnDiffs){
-      stop('Input quantiles or Z-score')
-    } else if(sum(is.na(bearing))==length(bearing)){
-      warning('No bearings (track angles) found. Skipping filter')
-      return(rep(TRUE,length(bearing)))
-    }
-    #Difference in compass bearings (in degrees)
-    bearingDiff <- function(x1,x2){
-      x <- x1-x2
-      x <- ifelse(abs(x)>180,x-(360*sign(x)),x) #Angle differences can't be >180
-      return(x)
-    }
-    
-    #Looks 1 point ahead and behind
-    bd <- cbind(bearingDiff(lag(bearing),bearing),
-                bearingDiff(lead(bearing),bearing))
-    #Maximum bearing difference ahead and behind
-    bd <- apply(bd,1,function(x){
-      max(abs(x),na.rm=TRUE)*sign(x[which.max(abs(x))])
-    }) 
-    
-    if(returnDiffs) return(bd) #Return bearing differences only, without filtering
-    
-    if(!is.null(q)){
-      ret <- QuantileFilter(bd,q=q)
-    } else {
-      ret <- ZscoreFilter(bd,z=z)
-    }
-    return(ret)
-  }
-  
-  #Positional difference filter - filters out very distant and very close points
-  posFilter <- function(data,q=NULL,returnDiffs=FALSE,upperOnly=FALSE){ 
-    if(is.null(q)&!returnDiffs) stop('Input upper quantile')
-    
-    if(units(st_distance(data[1,],data[2,]))$numerator!='m'){
-      warning('Position differences not in meters')
-    } 
-    coords <- st_coordinates(data) #Get coordinates
-    pdiff <- sapply(1:(nrow(coords)-1),function(i){ #Distances between points
-      as.numeric(dist(coords[i:(i+1),]))
-    }) 
-    pdiff <- cbind(c(pdiff,NA),c(NA,pdiff)) #Forward and backward lags
-    pdiff <- apply(pdiff,1,max,na.rm=TRUE) #Maximum distance ahead and behind
-    if(returnDiffs){
-      return(pdiff)
-    } else {
-      if(upperOnly){
-        return(quantile(pdiff,q)>pdiff) #Upper quantile  
-      } else {
-        return(QuantileFilter(pdiff,q)) #2-sided quantiles (upper and lower)  
-      }
-    }
-  }
-  
-  #Filter for (forward and backward) lagged speed differences.
-  dSpeedFilter <- function(speed,l=c(-1,1),perc=0.2){ 
-    #Overloaded lag function that takes negative values
-    lag2 <- function(x,n){
-      if(n==0) {
-        return(x) #No lag
-      } else if(n>0){
-        lag(x,n) #Positive lag
-      } else {
-        lead(x,abs(n)) #Negative lag
-      } 
-    }
-    
-    llist <- sapply(l,function(x) (lag2(speed,x)-speed)/lag2(speed,x)) #Matrix of % diffs
-    
-    #Are any lagged speed values > percent change threshold?
-    ret <- !apply(llist,1,function(y) any(abs(y)[!is.na(y)]>perc))
-    
-    return(ret)
   }
   
   a <- Sys.time()
@@ -736,127 +771,7 @@ clean_csv2 <- function(path,newpath=NULL,figpath=NULL,upperYield=NULL,
     cl <- NULL
     on.exit({rm(list=ls());gc()})
   }
-  
-  #FUNCTIONS
-  
-  #Function to filter anything above certain quantiles
-  QuantileFilter <- function(x,quant=0.99){ 
-    l <- c((1-quant)/2,1-(1-quant)/2) #Symmetric quantiles
-    x>quantile(x,l[1]) & x<quantile(x,l[2]) 
-  }
-  
-  #Filter differences in track angles 
-  bearingFilter <- function(bearing,q=NULL,z=NULL,returnDiffs=FALSE){
-    if(!xor(is.null(q),is.null(z))&!returnDiffs){
-      stop('Input quantiles or Z-score')
-    } else if(sum(is.na(bearing))==length(bearing)){
-      warning('No bearings (track angles) found. Skipping filter')
-      return(rep(TRUE,length(bearing)))
-    }
-    #Difference in compass bearings (in degrees)
-    bearingDiff <- function(x1,x2){
-      x <- x1-x2
-      x <- ifelse(abs(x)>180,x-(360*sign(x)),x) #Angle differences can't be >180
-      return(x)
-    }
-    
-    #Looks 1 point ahead and behind
-    bd <- cbind(bearingDiff(lag(bearing),bearing),
-                bearingDiff(lead(bearing),bearing))
-    #Maximum bearing difference ahead and behind
-    bd <- apply(bd,1,function(x){
-      max(abs(x),na.rm=TRUE)*sign(x[which.max(abs(x))])
-    }) 
-    
-    if(returnDiffs) return(bd) #Return bearing differences only, without filtering
-    
-    if(!is.null(q)){
-      ret <- QuantileFilter(bd,q=q)
-    } else {
-      ret <- ZscoreFilter(bd,z=z)
-    }
-    return(ret)
-  }
-  
-  #Positional difference filter - filters out very distant and very close points
-  posFilter <- function(data,q=NULL,returnDiffs=FALSE,upperOnly=FALSE){ 
-    if(is.null(q)&!returnDiffs) stop('Input upper quantile')
-    
-    if(units(st_distance(data[1,],data[2,]))$numerator!='m'){
-      warning('Position differences not in meters')
-    } 
-    coords <- st_coordinates(data) #Get coordinates
-    pdiff <- sapply(1:(nrow(coords)-1),function(i){ #Distances between points
-      as.numeric(dist(coords[i:(i+1),]))
-    }) 
-    pdiff <- cbind(c(pdiff,NA),c(NA,pdiff)) #Forward and backward lags
-    pdiff <- apply(pdiff,1,max,na.rm=TRUE) #Maximum distance ahead and behind
-    if(returnDiffs){
-      return(pdiff)
-    } else {
-      if(upperOnly){
-        return(quantile(pdiff,q)>pdiff) #Upper quantile  
-      } else {
-        return(QuantileFilter(pdiff,q)) #2-sided quantiles (upper and lower)  
-      }
-    }
-  }
-  
-  #Filter for (forward and backward) lagged speed differences.
-  dSpeedFilter <- function(speed,l=c(-1,1),perc=0.2){ 
-    #Overloaded lag function that takes negative values
-    lag2 <- function(x,n){
-      if(n==0) {
-        return(x) #No lag
-      } else if(n>0){
-        lag(x,n) #Positive lag
-      } else {
-        lead(x,abs(n)) #Negative lag
-      } 
-    }
-    
-    llist <- sapply(l,function(x) (lag2(speed,x)-speed)/lag2(speed,x)) #Matrix of % diffs
-    
-    #Are any lagged speed values > percent change threshold?
-    ret <- !apply(llist,1,function(y) any(abs(y)[!is.na(y)]>perc))
-    
-    return(ret)
-  }
-  
-  
-  # Make polygons from width, dist, and angle measurements, centered on location from dat
-  makePolys <- function(dat,width='w',dist='d',angle='a',backwards=FALSE){
-    
-    gType <- dat %>% st_geometry_type(FALSE) #Geometry type
-    
-    if(gType!='POINT') warning(paste('Input data type is',gType,'not POINT',sep=' '))
-    
-    rectFun <- function(x,y,w,d,a,b){
-      #Function to create corners of rotated rectangle from:
-      #   starting location (x,y),
-      #   width (w), distance (d), and angle (a)
-      #   rotate rectangles 180 degrees? (b)
-      rotate <- ifelse(b,90,270)
-      a <- (rotate-a)*pi/180 #90-angle in radians. 
-      v <- c(x,y) #Starting point
-      v1 <- c(d*cos(a),d*sin(a)) #Vectors to add together to get corners
-      v2 <- c(-(w/2)*sin(a),(w/2)*cos(a))
-      return(rbind(v+v2,v+v1+v2,v+v1-v2,v-v2,v+v2)) #Corners of rotated rectangle
-    }
-    datCRS <- st_crs(dat) #Coordinate system from dat
-    #Apply rectFun to all rows in dat. Probably could be done through map or some other purrr related thing.
-    xcoord <- st_coordinates(dat)[,1]
-    ycoord  <- st_coordinates(dat)[,2]
-    polys <- lapply(1:nrow(dat),function(i){
-      r <- rectFun(x = xcoord[i], y = ycoord[i],  w = dat[[width]][i],  d = dat[[dist]][i],
-                   a = dat[[angle]][i], b = backwards)
-      st_polygon(list(r))
-    })
-    #Combine dat with new polygon geometry, and add original CRS
-    dat2 <- st_sf(st_drop_geometry(dat),geometry=st_sfc(polys)) %>% st_set_crs(datCRS)
-    return(dat2)
-  }
-  
+
   a <- Sys.time()
   
   #Read in data
