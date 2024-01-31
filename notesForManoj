@@ -1,0 +1,44 @@
+NOTES FOR MANOJ ON RUNNING R SCRIPTS FOR PROCESSING YIELD DATA
+
+#Part 1: Field Boundary shapefiles ---------------
+- Boundary shapefiles should be exported from SMS (use default settings)
+- Shapefiles should have the naming convention "XXX_poly.shp"
+  - e.g. "202201 CLINTON MONCHUK_poly.shp", "202207 JVM VAN STAVEREN_poly.shp"
+- Shapefiles are stored in the directory D:\\geoData\\SMSexport\\Field Boundaries
+- Make sure that duplicate field names (multiple polygons from the same field) are merged into a single multipolygon
+- Once exported, run the function _cropTypeACI()_ to get land cover type from AAFC rasters
+  - I use the script _checkCropACI.R_ for this
+- Rasters are stored in D:\\geoData\\Rasters\\croplandInventory using the naming convention "aci_YEAR_PROV.tif"
+  - e.g. "aci_2012_sk.tif", "aci_2021_mb.tif"
+
+#Part 2: Cleaning yield data ------------------
+- Yield data should be exported from SMS to csv
+  - Metadata file with export settings found here D:\\geoData\\SMSstorage\\csvTemplate.xpt
+  - Remember to group by YEAR when exporting
+- Most of the functions I use for cleaning data can be found in the script _split_clean.R_
+- Exported csvs have long names when first exported. Use _rename_csv()_ to rename all files in a given directory
+- csvs have were (formerly) comprised of multiple fields per csv, and have non-standard column names. Use _split_csv()_ to rename the files and fix the column names
+- The main workhorse function for cleaning yield data is _clean_csv()_. In brief, what this does is:
+  1. Loads the yield csv, turns it into a spatial object
+  2. Filters out data points outside of the field boundary, or are outliers in some other sense
+  3. Checks whether multiple combines harvested each field segment, and attempts to erase this effect using a spatial GAM
+  4. Writes the cleaned data to a new csv, and creates output figures showing how the filtering worked
+- 
+
+
+#Other notes -----------------------
+- Be very careful when deleting files in R - there isn't a "Recycle Bin" you can get them back from
+- If you're interested in figuring out what the actual code is doing and potentially writing your own, I would recommend you follow these steps:
+1. Complete the exercises in this lecture: 
+  https://github.com/samuelVJrobinson/ecoStatsLectures/tree/fall2023/01%20Intro%20to%20R 
+  http://r-tutorials.com/r-exercises-for-beginners-1-10/ (alternate tutorial)
+2. Complete the exercises in this lecture: 
+  https://github.com/samuelVJrobinson/ecoStatsLectures/tree/fall2023/02%20dplyr%20and%20ggplot
+3. Learn the basics of the _sf_ library: 
+  https://r-spatial.github.io/sf/articles/sf1.html
+  https://ourcodingclub.github.io/tutorials/spatial-vector-sf/
+4. Load in some PYD and make some maps with it.
+5. Write a function to filter out yield data that is "too high", and compare this map to the original one
+  - the precise number you choose is up to you, but consider some of the material from the PYD textbook
+6. Learn the basics of the _stars_ or _terra_ packages, and rasterize the data in a field to some spatial grid
+  - The summary function (e.g. mean, median) you use is up to you. Try a couple and see how they look.

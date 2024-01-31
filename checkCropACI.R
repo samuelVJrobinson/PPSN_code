@@ -30,8 +30,6 @@ bFiles <- list.files("D:\\geoData\\SMSexport\\Field Boundaries",pattern = '*.shp
 #     st_write(names(multiField)[p],append = FALSE,quiet=TRUE)  
 # }
 
-
-#NOT WORKING for some reason
 for(i in 1:length(bFiles)){
   cropTypeACI(bFiles[i]) #Read and check boundary polygons
 }

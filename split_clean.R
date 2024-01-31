@@ -3,32 +3,30 @@ source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
 
 # Basic operations - unzip and process csv ----------------------------------------
 
+# Unzips all files within a directory
 unzipAll("D:\\geoData\\YieldStorageRaw\\Fall 2023 Data\\202218 Yield Data Files 2023\\Nunebor 2023 Yield Files",rmOld = TRUE)
 
-dirPath <- "D:\\geoData\\SMSexport\\202231 HILLSBORO FARMS"
 
-rename_csv(dirPath)
-# debugonce(rename_csv)
+dirPath <- "D:\\geoData\\SMSexport\\202231 HILLSBORO FARMS" #Directory path
 
-#Split large csvs into field-specific ones AND rename columns
+#Renames default SMS filenames
+rename_csv(dirPath) 
+
+#Splits large csvs into field-specific ones AND renames columns
 for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
   split_csv(l,TRUE)
 }
-debugonce(split_csv)
-split_csv('./S1.2 20-28-3 W2M_2022.csv',TRUE)
 
-#Merge fields that should be together
+#Merge fields that should be together - not really used
 # merge_csv('./SE.Can Sec 1_2022.csv','./Pivot W of 844_2022.csv','./SE.Can Sec 1B_2022.csv')
 
-#Clean and process 
 
-# debugonce(clean_csv)
-# debugonce(vegaFilter)
+# Clean and process yield data ---------------------------------
 
-#Single file
-fn <- 'Aaron east mini_2017'
-clean_csv('./Aaron east mini_2017.csv','./clean/Aaron east mini_2017.csv','./clean/Aaron east mini_2017.png',
-          useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
+# #Single file
+# fn <- 'Aaron east mini_2017'
+# clean_csv('./Aaron east mini_2017.csv','./clean/Aaron east mini_2017.csv','./clean/Aaron east mini_2017.png',
+#           useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
 
 #Process single/multiple directories
 
@@ -36,10 +34,12 @@ clean_csv('./Aaron east mini_2017.csv','./clean/Aaron east mini_2017.csv','./cle
 #               "D:\\geoData\\SMSexport\\202230 HANSBREK FARMS LTD",
 #               "D:\\geoData\\SMSexport\\202244 MARC AND CHERYL NOREEN",
 #               "D:\\geoData\\SMSexport\\202237 STUART LAWRENCE")
-dirPaths <- "D:\\geoData\\SMSexport\\202244 MARC AND CHERYL NOREEN"
+dirPaths <- "D:\\geoData\\SMSexport\\202202 LAKELAND COLLEGE"
 
-for(d in dirPaths){
-  setwd(d)
+for(d in dirPaths){ #For each directory
+  setwd(d) #Changes working directory to match
+  uprLimPath <- "D:\\geoData\\SMSexport\\PPSN_code\\data\\cropBulkDensity.csv" #Upper limit
+  bPolyPath <- paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",basename(d),"_poly.shp")
   for(l in dir('.','*\\_(19|20)\\d{2}.csv$',full.names = TRUE)){
     if(!dir.exists('./clean')) dir.create('./clean') #Creates "clean" directory if it doesn't already exist
     p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
@@ -49,7 +49,10 @@ for(d in dirPaths){
       print(paste0(gsub('./','',l),' already processed. Skipping.'))
     } else {
       try({
-        clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
+        # clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12) #Old version
+        clean_csv(path = l,newpath = p1, figpath = p2, upperYieldPath = uprLimPath,
+                   boundaryPath = bPolyPath, useVega = TRUE, ncore = 12,fastRead = TRUE,
+                   speedR2thresh=0.95,upperSpeed=15)
       },
       outFile =gsub('.csv','_ERROR.txt',basename(l)))
       gc(FALSE)
@@ -98,7 +101,7 @@ debugonce(clean_csv)
 #   }
 # }
 
-# Next step - rasterize yield data ----------------------------------------
+# Rasterize yield data ----------------------------------------
 
 #Check all folders and rasterize where needed
 
