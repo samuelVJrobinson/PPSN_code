@@ -9,6 +9,34 @@ library(stars)
 #Read in ACI data for field boundary polygons
 bFiles <- list.files("D:\\geoData\\SMSexport\\Field Boundaries",pattern = '*.shp$',full.names = TRUE)
 
+# #Check for duplicate fields within shapefiles
+# multiField <- sapply(bFiles,function(path){
+#   shp <- read_sf(path)
+#   ct <- table(shp$Field)
+#   ct <- ct[ct>1]
+#   # ifelse(length(ct==0),0,ct)
+#   length(ct)
+# })
+# 
+# multiField <- multiField[multiField>0]
+# 
+# names(multiField)
+# 
+# for(p in 2:length(multiField)){
+#   read_sf(names(multiField)[p]) %>% 
+#     group_by(Field) %>% 
+#     summarize(across(-geometry,~ifelse(length(.x)==1,.x,NA),do_union = TRUE)) %>% 
+#     ungroup() %>% 
+#     st_write(names(multiField)[p],append = FALSE,quiet=TRUE)  
+# }
+
+
+#NOT WORKING for some reason
+for(i in 1:length(bFiles)){
+  cropTypeACI(bFiles[i]) #Read and check boundary polygons
+}
+# debugonce(cropTypeACI)
+
 mkMap <- function(path){ #Make simple maps of shapefiles
   shp <- read_sf(path)
   p <- shp %>% ggplot()+geom_sf(aes(fill=Field))+
@@ -18,11 +46,7 @@ mkMap <- function(path){ #Make simple maps of shapefiles
 }
 
 
-#NOT WORKING for some reason
-for(i in 1:length(bFiles)){
-  cropTypeACI(bFiles[i]) #Read and check boundary polygons
-}
-# debugonce(cropTypeACI)
+
 
 for(i in 1:length(bFiles)){ #Make simple maps
   mkMap(bFiles[i])
@@ -40,27 +64,7 @@ debugonce(cropTypeACI)
 # cropTypeACI(bFiles[3],addNewFields = "C:\\Users\\samuel.robinson\\Desktop\\202203 DAVE HOFER 2_poly.shp")
 cropTypeACI("D:\\geoData\\SMSexport\\Field Boundaries\\202227 CHERNESKI LAND AND CATTLE_poly.shp")
 
-#Check for duplicate fields within shapefiles
 
-multiField <- sapply(bFiles,function(path){
-  shp <- read_sf(path)
-  ct <- table(shp$Field)
-  ct <- ct[ct>1]
-  # ifelse(length(ct==0),0,ct)
-  length(ct)
-})
-
-multiField <- multiField[multiField>0]
-
-names(multiField)
-
-for(p in 2:length(multiField)){
-  read_sf(names(multiField)[p]) %>% 
-    group_by(Field) %>% 
-    summarize(across(-geometry,~ifelse(length(.x)==1,.x,NA),do_union = TRUE)) %>% 
-    ungroup() %>% 
-    st_write(names(multiField)[p],append = FALSE,quiet=TRUE)  
-}
 
 
 

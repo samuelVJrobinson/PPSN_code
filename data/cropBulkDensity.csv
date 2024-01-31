@@ -1,18 +1,19 @@
-CropType,Bu_t,DryMoisture_perc
-Oats,64.8,10
-Canola,42.4,6.6
-Barley,45.9,10
-Rye,39.368,9.7
-Spring Wheat,36.744,9.8
-Mustard,42.4,6.6
-Lentils,36.744,13
-Peas,36.744,10
-Soybeans,36.744,7
-Flaxseed,39.368,7
-Winter Wheat,36.744,9.8
-Durum,36.744,9.8
-Chickpeas,38.34851351,14
-Canaryseed,44.0924,13
-Fababeans,34.8195092,12.5
-Blow Out,NA,NA
-Sorghum,39.3590846,10
+CropType,Bu_t,DryMoisture_perc,UprLim_tha,UprLim_tha_plot,UprLim_buac
+Oats,64.8,10,11.00,6,288.4603711
+Canola,42.4,6.6,8.00,6,137.2695818
+Barley,45.9,10,11.00,6,204.3260962
+Rye,39.368,9.7,11.00,6,175.2485785
+Spring Wheat,36.744,9.8,10.00,6,148.6979219
+Mustard,42.4,6.6,8.00,6,137.2695818
+Lentils,36.744,13,8.00,6,118.9583375
+Peas,36.744,10,10.00,6,148.6979219
+Soybeans,36.744,7,10.00,6,148.6979219
+Flaxseed,39.368,7,8.00,6,127.4535117
+Winter Wheat,36.744,9.8,10.00,6,148.6979219
+Durum,36.744,9.8,10.00,6,148.6979219
+Chickpeas,38.34851351,14,8.00,6,124.1529342
+Canaryseed,44.0924,13,8.00,6,142.7487101
+Fababeans,34.8195092,12.5,10.00,6,140.909772
+Blow Out,NA,NA,NA,NA,NA
+Sorghum,39.3590846,10,8.00,6,127.4246482
+Corn,39.3590846,15.5,8.00,6,127.4246482

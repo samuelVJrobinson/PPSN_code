@@ -6,8 +6,11 @@ library(stars)
 library(ggpubr)
 theme_set(theme_classic())
 
-source("C:\\Users\\Samuel\\Documents\\Projects\\UofC postdoc\\PPSN_code\\helperFunctions.R")
-load("C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Rasterized yield\\canProf.Rdata")
+# source("C:\\Users\\Samuel\\Documents\\Projects\\UofC postdoc\\PPSN_code\\helperFunctions.R")
+# load("C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Rasterized yield\\canProf.Rdata")
+
+source("../helperFunctions.R")
+load("./canProf.Rdata")
 
 canProf <- canProf[sapply(canProf,class)=='data.frame'] %>% 
   bind_rows(.id='Grower') %>% 
