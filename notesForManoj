@@ -23,13 +23,21 @@ NOTES FOR MANOJ ON RUNNING R SCRIPTS FOR PROCESSING YIELD DATA
   2. Filters out data points outside of the field boundary, or are outliers in some other sense
   3. Checks whether multiple combines harvested each field segment, and attempts to erase this effect using a spatial GAM
   4. Writes the cleaned data to a new csv, and creates output figures showing how the filtering worked
-- 
+- _clean_csv()_ takes the path to a yield csv as its main input, and also requires the following paths:
+  - newpath: path to new csv (found in the "clean" subdirectory)
+  - figpath: path to the filtering figure (also in the "clean" subdirectory)
+  - upperYieldPath: upper limits for yield - found in D:\\geoData\\SMSexport\\PPSN_code\\data\\cropBulkDensity.csv
+  - boundaryPath: path to boundary shapefiles - found in D:\\geoData\\SMSexport\\Field Boundaries
+  
+#Part 3: Organization -----------------------------
+
+
 
 
 #Other notes -----------------------
 - Be very careful when deleting files in R - there isn't a "Recycle Bin" you can get them back from
 - If you're interested in figuring out what the actual code is doing and potentially writing your own, I would recommend you follow these steps:
-1. Complete the exercises in this lecture: 
+1. Complete the exercises in this lecture (without looking up the answers in the Rmarkdown file): 
   https://github.com/samuelVJrobinson/ecoStatsLectures/tree/fall2023/01%20Intro%20to%20R 
   http://r-tutorials.com/r-exercises-for-beginners-1-10/ (alternate tutorial)
 2. Complete the exercises in this lecture: 

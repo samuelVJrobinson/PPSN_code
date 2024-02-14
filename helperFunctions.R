@@ -540,10 +540,20 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
     print(paste0(sum(!inBoundary),' points outside field boundary removed'))
   } 
   
+
+  #Check for point coverage across field boundary
+  
   #Create harvest polygons from point data
   yieldArea <- makePolys(dat, width='SwathWidth_m', dist = 'Distance_m',angle = 'Track_deg')
   
-  #Check for point coverage across boundary
+  #Filters abnormally large yield polygons - possibly GPS or header errors
+  largePoly <- as.numeric(st_area(yieldArea))>50 | dat$Distance>5  #Larger than 50m2 OR 5m distance
+  if(any(largePoly)){
+    print(paste0(sum(largePoly),' abnormally large yield polygons (>50m2) removed'))
+    yieldArea <- yieldArea %>% filter(!largePoly)
+    dat <- dat %>% filter(!largePoly)
+  }
+  
   propCoverage <- as.numeric(sum(st_area(yieldArea))/sum(st_area(fieldBoundary)))
   if(propCoverage<0.5){ #if less than 50% of field area has data
     if(propCoverage<0.25){
@@ -669,8 +679,9 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
   filtCrit <- with(dat, tooLarge & qFilt & bFilt & speedFilt & dSpeedFilt & posFilt)
   
   if((1-mean(filtCrit))>0.15){
-    warning(paste0(round((1-mean(filtCrit))*100),'% of data filtered in first stage.'))
+    print(paste0(round((1-mean(filtCrit))*100),'% of data filtered in first stage.'))
     if((1-mean(filtCrit))>0.5){
+      print(paste0(round((1-mean(filtCrit))*100),'% of data filtered in first stage. Check data quality'))
       stop(paste0(round((1-mean(filtCrit))*100),'% of data filtered in first stage. Check data quality'))
     }
   }
@@ -700,7 +711,7 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
     isAdjusted <- rep(FALSE,length(unique(inFieldPart))) #Has this field part been adjusted?
     
     for(part in 1:length(unique(inFieldPart))){ #For each field part
-      errPath <- gsub('.png',paste0('_part',part,'ERROR.txt'),figpath) #Error path
+      errPath <- gsub('\\.png$',paste0('_part',part,'ERROR.txt'),figpath) #Error path
       sDat <- dat %>% mutate(rID=1:n()) %>% #Row ID
         filter(inFieldPart==part) %>% #Data for field part i
         mutate(Date_Combine=droplevels(Date_Combine)) %>% 
@@ -791,7 +802,7 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
         #If an error occurred during smoothing
         if(file.exists(errPath)){
           print(paste0('Error occurred during smoothing procedure for field ',
-                       fieldName,' - part ',part,'. Data (n = ',nrow(sDat),') may be too sparse.'))
+                       fieldName,' - part ',part,'. Data (n = ',nrow(sDat),') may be too sparse or differences between combines may be too large.'))
           next()
         } else {
           #Adjusted yield: subtracts combine/date, then adds back in an "average" combine/date effect
@@ -828,7 +839,8 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
   if((1-mean(dat$vegaFilt[filtCrit]))>0.15){
     warning(paste0(round((1-mean(dat$vegaFilt[filtCrit]))*100),'% of data filtered in Vega filter.'))
     if((1-mean(dat$vegaFilt))>0.5){
-      stop(paste0(round((1-mean(dat$vegaFilt[filtCrit]))*100),'% of data filtered in Vega filter. Check data quality'))
+      stop(paste0(round((1-mean(dat$vegaFilt[filtCrit]))*100),'% of data filtered in Vega filter. Skipping'))
+      stop(paste0(round((1-mean(dat$vegaFilt[filtCrit]))*100),'% of data filtered in Vega filter. Skipping'))
     }
   }
   filtCrit <- filtCrit & dat$vegaFilt #Adds vegaFilt to overall filtCrit
@@ -841,7 +853,7 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
   propFilt <- (sum(is.na(dat$Yield_tha_filt))/nrow(dat)) #Proportion of filtered data
   if(0.5<propFilt){
     filtCol <-  st_drop_geometry(dat) %>% #Proportion data dropped from each category
-      select(inBoundary:allFilt) %>% as.matrix() %>%
+      select(tooLarge:posFilt,vegaFilt,allFilt) %>% as.matrix() %>%
       apply(.,2,function(x) round(mean(!x),2)) 
     msg <- paste0(round(propFilt*100,1),'% of the data have been filtered. Check filtering categories:\n',
                   paste(capture.output(print(filtCol)),collapse = "\n"))
@@ -850,6 +862,21 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
     warning(msg)
   } else if(0.3<propFilt) {
     warning(paste0(round(propFilt*100,1),'% of the data have been filtered'))
+  }
+  
+  #2nd Check for point coverage across field boundary 
+  #Create harvest polygons from point data
+  yieldArea <- makePolys(dat, width='SwathWidth_m', dist = 'Distance_m',angle = 'Track_deg')
+  propCoverage <- as.numeric(sum(st_area(yieldArea))/sum(st_area(fieldBoundary)))
+  if(propCoverage<0.5){ #if less than 50% of field area has data
+    if(propCoverage<0.25){
+      print("After filtering, less than 25% of field boundary area has yield data. Skipping")
+      stop("After filtering, less than 25% of field boundary area has yield data. Skipping")
+    } else {
+      warning("After filtering, less than 50% of field boundary area has yield data.")
+    }
+  } else {
+    print(paste0('After filtering ',round(100*propCoverage),'% of field boundary has yield data'))
   }
   
   #Filtered data plots
@@ -881,7 +908,9 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
   if(is.null(figpath)) figpath <- gsub('\\.csv$','.png',newpath)
   #Make figure
   png(figpath,width=10, height=6, units = 'in', res = 250)
-  plot(dat[,dispCols],pch=19,cex=0.05,pal=palFun,max.plot=11)
+  suppressWarnings({
+    plot(dat[,dispCols],pch=19,cex=0.05,pal=palFun,max.plot=11)
+  })
   dev.off()
   
   b <- Sys.time()
@@ -911,8 +940,6 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
   }
   print(paste0('Finished. Time: ', Sys.time()))
 }
-
-
 
 
 #Function to create boundary multipolygon from crop csvs
@@ -1096,26 +1123,27 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
   st_write(fieldBoundaries,boundPath,append = FALSE,quiet=TRUE)
 }
 
-#Rasterize yield data - back-corrects for combine ID and harvest dates
+#Rasterize yield data - uses back-corrected and filtered yield (Yield_tha_filt)
 rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field Boundaries",
-                           fieldFiltChar = NULL,
-                           rastDir=NULL,nClust=12,overwrite=FALSE){
+                           rastDir=NULL,overwrite=FALSE){
+  # #Debugging
+  # yieldDir <- "./202201 CLINTON MONCHUK/clean"
+  # boundDir <- "D:\\geoData\\SMSexport\\Field Boundaries"
+  # rastDir <- "./202201 CLINTON MONCHUK/rasters" 
+  # overwrite=FALSE
+  
   if(is.null(yieldDir)) stop('Yield file directory must be specified')
   if(is.null(rastDir)) rastDir <- gsub(basename(yieldDir),'rasters',yieldDir)
   if(!dir.exists(rastDir)) dir.create(rastDir)
   
   filePaths <- list.files(yieldDir,pattern="*\\.csv$",full.names = TRUE) #Get all csv paths
   if(length(filePaths)==0) stop('No files found in listed directory')
-  if(!is.null(fieldFiltChar)){ #Select only fields matching listed regexp
-    filePaths <- filePaths[grepl(fieldFiltChar,filePaths)]
-    if(length(filePaths)==0) stop('No files matching listed regexp')
-  }
   
   boundPaths <- list.files(boundDir,pattern="*\\.shp$",full.names = TRUE) #Get all shp paths
-  fID <- regmatches(yieldDir,regexpr("2022[0-9]{2}",yieldDir)) #Farmer ID #
-  if(length(fID)!=1) stop(paste0('No farmer IDs found matching ',yieldDir))
+  fID <- regmatches(yieldDir,regexpr("2022[0-9]{2}",yieldDir)) #Grower ID #
+  if(length(fID)!=1) stop(paste0('No grower IDs found matching ',yieldDir))
   bPath <- boundPaths[grepl(fID,boundPaths)] #Path for boundary shape files
-  if(length(bPath)!=1) stop(paste0('No boundary paths found matching farmer ID ',fID))
+  if(length(bPath)!=1) stop(paste0('No boundary paths found matching grower ID ',fID))
   
   #Check if folder has already been processed
   if(!any(!file.exists(file.path(rastDir,gsub('.csv$','.tif',basename(filePaths)))))){
@@ -1139,94 +1167,58 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
     print(paste('Rasterizing files in',yieldDir,'------------------------'))
     print(paste('Started at',Sys.time()))
     
-    cl <- makeCluster(nClust) #Parallel processing cluster. 
-    on.exit({stopCluster(cl); rm(list=ls());gc()}) #Cleanup on exit
-    
     for(path in filePaths){
       fieldRastPath <- file.path(rastDir,gsub('.csv$','.tif',basename(path))) #Raster path
       
       if(file.exists(fieldRastPath) & !overwrite){
         print(paste0(basename(fieldRastPath),' already converted to raster'))
       } else {
-        fieldName <- gsub('\\_20[0-9]{2}.csv$','',basename(path)) #Get field name from csv path
-        fieldBoundPoly <- boundPoly %>% filter(Field==fieldName) #Boundary around individual field
-        if(nrow(fieldBoundPoly)==0) stop('No boundary found for Field ',fieldName)
-        
-        #Read in data and turn into an sf object
-        dat <- data.table::fread(path,sep=",") %>% data.frame() %>% #Faster than read.csv
-          mutate(allFilt = tooLarge & vegaFilt & qFilt & bFilt & speedFilt & dSpeedFilt & posFilt) %>% 
-          st_as_sf(coords=c('Longitude','Latitude'),remove=FALSE) %>% #Add spatial feature info
-          st_set_crs(4326) %>% #Lat-lon format
-          st_transform(st_crs(boundPoly)) %>%
-          filter(allFilt) %>% 
-          filter(sapply(st_within(.,fieldBoundPoly),length)==1) %>% 
-          bind_cols(st_coordinates(.)) %>% #Get x,y coords in meters
-          mutate(across(c(X,Y),~.x-mean(.x))) %>%  #Center coordinates
-          mutate(across(c(Grower:CombineID),factor)) %>% 
-          mutate(Date_Combine=factor(paste(Date_ymd,CombineID,sep='_')))
-        
-        if(length(unique(dat$Date_Combine))>1){ #If multiple combines/dates are present
+        try({
+          fieldName <- gsub('\\_20[0-9]{2}.csv$','',basename(path)) #Get field name from csv path
+          fieldBoundPoly <- boundPoly %>% filter(Field==fieldName) #Boundary around individual field
+          if(nrow(fieldBoundPoly)==0) stop('No boundary found for Field ',fieldName)
+          if(nrow(fieldBoundPoly)>1) stop('Multiple polygons found for Field ',fieldName)
           
-          errPath <- gsub('.tif','_ERROR.txt',fieldRastPath) #Error path
+          #Read in data and turn into an sf object
+          dat <- data.table::fread(path,sep=",") %>% data.frame() %>% #Faster than read.csv
+            mutate(allFilt = tooLarge & vegaFilt & qFilt & bFilt & speedFilt & dSpeedFilt & posFilt) %>% 
+            st_as_sf(coords=c('Longitude','Latitude'),remove=FALSE) %>% #Add spatial feature info
+            st_set_crs(4326) %>% #Lat-lon format
+            st_transform(st_crs(boundPoly)) %>%
+            filter(allFilt) %>% 
+            bind_cols(st_coordinates(.)) %>% #Get x,y coords in meters
+            mutate(across(c(X,Y),~.x-mean(.x))) %>%  #Center coordinates
+            mutate(across(c(Grower:CombineID),factor)) %>% 
+            mutate(Date_Combine=factor(paste(Date_ymd,CombineID,sep='_')))
           
-          #Fit combine-and-date yield model, with spatial smoother s(X,Y), then refit with autocorrelation term
-          try({
-            m1 <- bam(Yield_tha ~ Date_Combine + s(X,Y,k=200) + 0,data=dat,cluster=cl) #No rho term
-            ar1 <- acf(resid(m1),type = 'partial',plot=FALSE)$acf[1,,] #Autocorrelation term
-            m1 <- bam(Yield_tha ~ Date_Combine  + s(X,Y,k=200) + 0,data=dat,cluster=cl,rho=ar1) #Refit with rho
-            
-            #Back-correct estimated combine effects using AR1 model
-            modMat <- model.matrix(~ Date_Combine + 0,data=dat) #Model matrix
-            coefs <- coef(m1)[!grepl('s\\(',names(coef(m1)))] #Get coefficients
-            
-            #Maximum difference in size of coefficients
-            maxDiff <- max(abs(sapply(1:length(coefs),function(i,vec){ vec[i]/vec[-i]},vec=coefs)))
-            if(maxDiff>2){
-              stop(paste0('Large differences in estimated combine yield differences (',
-                          round(maxDiff,1),
-                          ' times). Is this from a single field or crop type?'))
-            }
-            
-          },outFile = errPath)  
+          #Aggregate data and write to raster
+          rastTemplate <- st_as_stars(st_bbox(fieldBoundPoly), dx = 20, dy = 20, values=0)
+          grd <- st_as_sf(rastTemplate) #Create grid (20x20 m cell size)
+          #1st and 3rd quartile functions
+          q1 <- function(x,na.rm=TRUE) quantile(x,0.25,na.rm)
+          q3 <- function(x,na.rm=TRUE) quantile(x,0.75,na.rm)
+          N <- function(x,na.rm=TRUE) length(na.omit(x))
+          funs <- c('mean','sd','min','q1','median','q3','max','N') #Summary functions to apply
+          agg <- lapply(funs,function(f){
+            aggregate(select(dat,Yield_tha_filt), grd, FUN = eval(parse(text=f)), na.rm=TRUE) %>% #Aggregate to grid
+              st_rasterize(template = rastTemplate) #Convert to stars object  
+          }) %>% set_names(nm=funs) %>% do.call('c',.) %>% merge()
           
-          #If an error occurred during smoothing
-          if(file.exists(errPath)){
-            print(paste0('Error occurred during smoothing procedure for field ',
-                         fieldName,'. Data (n = ',nrow(dat),') may be too sparse.'))
-            next()
-          } else {
-            #Adjusted yield: subtracts combine/date, then adds back in an "average" combine/date effect
-            dat$Yield_tha <- dat$Yield_tha - (modMat %*% coefs)[,1] + mean(modMat %*% coefs) 
-            dat$Yield_tha[dat$Yield_tha<0] <- 0.0001 #Makes sure all yield values are non-zero   
-          }
+          # #Can rasters have crop info along with them? Can't find a way to add to .tif metadata at this point
+          # paste0(
+          #   paste0('ACI:',pull(fieldBoundPoly,paste0('y',gsub('(.*_|\\.csv)','',path)))),';',
+          #   paste0('Monitor:',paste(unique(dat$Crop),unname(round(100*table(dat$Crop)/nrow(dat),1)),sep='_',collapse=','))
+          # )
           
-        }
-        
-        #Aggregate data and write to raster
-        rastTemplate <- st_as_stars(st_bbox(fieldBoundPoly), dx = 20, dy = 20, values=0)
-        grd <- st_as_sf(rastTemplate) #Create grid (20x20 m cell size)
-        #1st and 3rd quartile functions
-        q1 <- function(x,na.rm=TRUE) quantile(x,0.25,na.rm)
-        q3 <- function(x,na.rm=TRUE) quantile(x,0.75,na.rm)
-        funs <- c('mean','sd','min','q1','median','q3','max') #Summary functions to apply
-        agg <- lapply(funs,function(f){
-          aggregate(select(dat,Yield_tha), grd, FUN = eval(parse(text=f)), na.rm=TRUE) %>% #Aggregate to grid
-            st_rasterize(template = rastTemplate) #Convert to stars object  
-        }) %>% set_names(nm=funs) %>% do.call('c',.) %>% merge()
-        
-        write_stars(agg,fieldRastPath) #Write to geoTiff
-        print(paste('Converted',basename(fieldRastPath)))
+          write_stars(agg,fieldRastPath) #Write to geoTiff
+          print(paste('Converted',basename(fieldRastPath)))
+        },outFile=gsub('\\.tif$','_ERROR.txt',fieldRastPath))
       }
     }
     print(paste('Finished at',Sys.time()))
   }
 }
-
-# rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202201 CLINTON MONCHUK\\clean",
-#                boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
-#                fieldFiltChar = "2022.csv$",
-#                rastDir = "D:\\geoData\\SMSexport\\202201 CLINTON MONCHUK\\rasters",
-#                overwrite = FALSE)
+# rasterizeYield(yieldDir="./202201 CLINTON MONCHUK/clean",rastDir="./202201 CLINTON MONCHUK/rasters")
 
 #Function to calculate profitability for rasterized yield data. 
 #Finds all yield rasters in rastDir, matches to soil/province polygons, field boundaries, and crop prices

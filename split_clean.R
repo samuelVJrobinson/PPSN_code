@@ -1,11 +1,10 @@
 # source("/media/rsamuelStorage1/geoData/SMSexport/helperFunctions.R")
-source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
+source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R") #Load helper functions
 
 # Basic operations - unzip and process csv ----------------------------------------
 
 # Unzips all files within a directory
-unzipAll("D:\\geoData\\YieldStorageRaw\\Fall 2023 Data\\202218 Yield Data Files 2023\\Nunebor 2023 Yield Files",rmOld = TRUE)
-
+unzipAll("D:\\geoData\\YieldStorageRaw\\Fall 2023 Data\\202247 Yield Data Files\\202247 Yield Data Files 2019-2023\\",rmOld = TRUE)
 
 dirPath <- "D:\\geoData\\SMSexport\\202231 HILLSBORO FARMS" #Directory path
 
@@ -28,16 +27,16 @@ for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
 # clean_csv('./Aaron east mini_2017.csv','./clean/Aaron east mini_2017.csv','./clean/Aaron east mini_2017.png',
 #           useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
 
-#Process single/multiple directories
+#Process multiple directories
 
-# dirPaths <- c("D:\\geoData\\SMSexport\\202216 ZENNETH FAYE",
-#               "D:\\geoData\\SMSexport\\202230 HANSBREK FARMS LTD",
-#               "D:\\geoData\\SMSexport\\202244 MARC AND CHERYL NOREEN",
-#               "D:\\geoData\\SMSexport\\202237 STUART LAWRENCE")
-dirPaths <- "D:\\geoData\\SMSexport\\202202 LAKELAND COLLEGE"
+dirPaths <- c("D:\\geoData\\SMSexport\\202204 SHANE STROEDER",
+              "D:\\geoData\\SMSexport\\202205 GJ C AND C")
+# dirPaths <- "D:\\geoData\\SMSexport\\202204 SHANE STROEDER"
+dirPaths <- dir('D:\\geoData\\SMSexport\\','.*2022[0-9]{2}\\s',include.dirs = TRUE,full.names = TRUE)
 
 for(d in dirPaths){ #For each directory
   setwd(d) #Changes working directory to match
+  try({rename_csv('.')},silent = TRUE)
   uprLimPath <- "D:\\geoData\\SMSexport\\PPSN_code\\data\\cropBulkDensity.csv" #Upper limit
   bPolyPath <- paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",basename(d),"_poly.shp")
   for(l in dir('.','*\\_(19|20)\\d{2}.csv$',full.names = TRUE)){
@@ -60,28 +59,6 @@ for(d in dirPaths){ #For each directory
   }  
 }
 debugonce(clean_csv)
-
-# #All directories
-# dirs <- dir('D:\\geoData\\SMSexport\\','.*2022[0-9]{2}\\s',include.dirs = TRUE,full.names = TRUE)
-# for(d in dirs){
-#   setwd(d)
-#   try({rename_csv('.')},silent = TRUE)
-#   for(l in dir('.','*\\_20\\d{2}.csv',full.names = TRUE)){
-#     p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
-#     p2 <- gsub('csv$','png',p1) #png writing path
-#     if(file.exists(p1)){
-#       print(paste0(gsub('./','',l),' already processed. Skipping.'))
-#     } else {
-#       # clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
-#       try({
-#         # rename_csv(".") #Fix default file names names from SMS
-#         split_csv(l,FALSE) #Split files
-#         clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12)
-#         },outFile =gsub('.csv','_ERROR.txt',basename(l)))
-#       gc(FALSE)
-#     } 
-#   }  
-# }
 
 # #Files in directory with ERROR files
 # setwd(dirPath)
@@ -123,8 +100,7 @@ for(i in 1:length(yDirs)){
   try({
     rasterizeYield(yieldDir = yDirs[i],
                    boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
-                   # fieldFiltChar = "2022.csv$",
-                   rastDir = rDirs[i], overwrite = FALSE)  
+                   rastDir = rDirs[i])  
   },
   outFile =gsub('/rasters','_ERROR.txt',rDirs[1]))
   gc()
@@ -143,7 +119,6 @@ for(i in 1:length(yDirs)){
   try({
     rasterizeYield(yieldDir = yDirs[i],
                    boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
-                   # fieldFiltChar = "2022.csv$",
                    rastDir = rDirs[i], overwrite = FALSE)  
   },
   outFile =gsub('/rasters','_ERROR.txt',rDirs[1]))
