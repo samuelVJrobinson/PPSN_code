@@ -187,6 +187,23 @@ rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM ST
 
 # Other things ------------------------------------------------------------
 
+#Which field has large proportion qFilt? (Extreme values)
+
+library(tidyverse)
+library(data.table)
+searchDirs <- dir('..',include.dirs = TRUE,full.names = TRUE) #Get directories
+searchDirs <- paste0(searchDirs[grepl('\\d{6}',searchDirs)],'/clean')
+propFilter <- lapply(searchDirs,function(d){ #Takes quite a while to run this
+  searchFiles <- dir(d,pattern = '\\.csv$',full.names = TRUE)
+  lapply(searchFiles,function(f){
+    apply(fread(f,header = TRUE,
+                select=c('tooLarge','vegaFilt','qFilt','bFilt','speedFilt','dSpeedFilt','posFilt')),2,function(x) sum(!x)/length(x))
+  }) %>% setNames(gsub('(\\.csv$|^.+\\/clean\\/)','',searchFiles)) %>% 
+    bind_rows(.id = 'FieldName')
+})
+save('propFilter',file='./data/propFilter.Rdata')
+
+
 # #Create boundary files for non-SMS directories
 # 
 # fName <- c("202230 HANSBREK FARMS LTD",
