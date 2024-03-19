@@ -1153,8 +1153,6 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
       library(tidyverse)
       library(sf)
       library(stars)
-      library(mgcv)
-      library(parallel)
     })
     
     boundPoly <- read_sf(bPath) #Boundary polygons for all fields
