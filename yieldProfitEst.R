@@ -4,7 +4,6 @@
 library(sf)
 library(tidyverse)
 library(scales)
-library(stars)
 library(ggpubr)
 library(rmarkdown)
 
@@ -396,6 +395,7 @@ canProf[[1]] %>%
 
 # Other --------------------------
 
+# library(stars)
 # pltTitle <- paste0('Median profit: $',
 #                    round(median(profCalc),1),
 #                    '/ac\n Unprofitable area: ',
