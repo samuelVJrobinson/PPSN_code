@@ -217,4 +217,4 @@ p2 <- ggplot(fBound)+
   theme_bw()+labs(x=NULL,y=NULL,fill='$/ac',title='Canola: $12/bu (40.5% profitable)')+
   theme(axis.text = element_blank(),axis.ticks = element_blank(),panel.grid = element_blank())
 (p <- ggarrange(p1,p2,common.legend = TRUE,legend='right'))
-ggsave('./carpFigures2023/profCatMap_priceDiff.png',plot = p,bg = 'white',dpi = 300)
+ggsave('./carpFigures2023/profCatMap_priceDiff.png',plot = p,bg = 'white',dpi = 400)
