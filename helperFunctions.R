@@ -1276,7 +1276,8 @@ profEstimates <- function(rastDir = NULL,
   #Get provincial/soil zones
   soilProv <- read_sf(soilMapPath) %>%  
     group_by(SoilZone,Prov) %>% summarize(do_union = TRUE,.groups = "keep") %>% 
-    ungroup() %>% st_transform(st_crs(bPoly)) 
+    ungroup() %>% st_transform(st_crs(bPoly)) %>% 
+    st_make_valid()
   
   bPoly <- bPoly %>% st_join(soilProv) 
   
@@ -1297,6 +1298,8 @@ profEstimates <- function(rastDir = NULL,
       st_nearest_feature(st_centroid(st_geometry(bPoly))[noSoil],soilProv)
     ]
   }
+  
+  if(!any(grepl('^y20',colnames(bPoly)))) stop('Year-wise column names (e.g. y2020) not found. Have boundary polygons been processed yet? (Need to run cropTypeACI() in checkCropACI.R)')
   
   bPoly <- bPoly %>% pivot_longer(matches('^y20'),names_to='Year',values_to='CropType') %>% 
     mutate(CropType=factor(gsub('_.*$','',CropType)),Year=as.numeric(gsub('y','',Year))) %>% 
