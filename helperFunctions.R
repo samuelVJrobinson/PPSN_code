@@ -989,7 +989,7 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
   library(sf)
   library(stars)
   
-  # sf_use_s2(FALSE) #Turn off spherical geometry
+  sf_use_s2(FALSE) #Turn off spherical geometry
   
   # Read in boundary shp files for yield data 
   print(paste0('Reading boundary files: ',basename(boundPath)))
@@ -998,14 +998,19 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
   
   if(is.na(st_crs(fieldBoundaries))) stop('CRS for boundary polygons not defined')
   
-  fieldBoundaries <- fieldBoundaries %>% 
+  #NOTE: some problems with self-intersecting lines that isn't solved by st_make_valid() without turning off spherical geometry
+  # Looks like this is solved by transforming to UTM before union, then going back to lat-lon
+  
+  origCRS <- st_crs(fieldBoundaries) #Original CRS
+  
+  fieldBoundaries <- fieldBoundaries %>% st_transform(3401) %>% #Transforms to UTM
     dplyr::select(matches('(Field|^y20\\d{2}$)')) %>% #Select only 
     mutate(Field=gsub('(/|_)','.',Field)) %>% #Replace forwardslash and underscore
     st_make_valid() %>% #Fix geometry if needed
     filter(!st_is_empty(.)) %>% #Remove empty geometries
     group_by(Field) %>% 
     summarize(across(-geometry,first),do_union = TRUE) %>% #Formerly had suppressMessages(), but this was stopping union
-    ungroup()
+    ungroup() %>% st_transform(origCRS)
   
   #Get ACI extent polygons, filter out non-overlapping polygons
   aciExtents <- st_read(file.path(invDir,'aciExtents.shp'),quiet = TRUE) %>% 
