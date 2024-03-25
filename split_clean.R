@@ -6,15 +6,15 @@ source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R") #Load helper func
 # Unzips all files within a directory
 unzipAll("D:\\geoData\\YieldStorageRaw\\Fall 2023 Data\\202247 Yield Data Files\\202247 Yield Data Files 2019-2023\\",rmOld = TRUE)
 
-dirPath <- "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK" #Directory path
+dirPath <- "D:\\geoData\\SMSexport\\202213 LAJORD COLONY" #Directory path
 
 #Renames default SMS filenames
 rename_csv(dirPath) 
 
-#Splits large csvs into field-specific ones AND renames columns
-for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
-  split_csv(l,TRUE)
-}
+# #Splits large csvs into field-specific ones AND renames columns
+# for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
+#   split_csv(l,TRUE)
+# }
 
 #Merge fields that should be together - not really used
 # merge_csv('./SE.Can Sec 1_2022.csv','./Pivot W of 844_2022.csv','./SE.Can Sec 1B_2022.csv')
@@ -31,7 +31,7 @@ for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
 
 # dirPaths <- c("D:\\geoData\\SMSexport\\202204 SHANE STROEDER",
 #               "D:\\geoData\\SMSexport\\202205 GJ C AND C")
-dirPaths <- "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK"
+dirPaths <- "D:\\geoData\\SMSexport\\202213 LAJORD COLONY"
 # dirPaths <- dir('D:\\geoData\\SMSexport\\','.*2022[0-9]{2}\\s',include.dirs = TRUE,full.names = TRUE)
 
 for(d in dirPaths){ #For each directory
