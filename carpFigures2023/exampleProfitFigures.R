@@ -6,9 +6,6 @@ library(stars)
 library(ggpubr)
 library(ggmap)
 
-#API key for Google maps = AIzaSyBIf_mPDHW8WYilCC_t4q-Vs1BDalwWHH0
-register_google(key = "AIzaSyBIf_mPDHW8WYilCC_t4q-Vs1BDalwWHH0") #Personal Google maps key
-
 # Load in raster files
 storageDir <- './carpFigures2023/Example yield maps/'
 tifFiles <- list.files(storageDir,pattern = '.tif$',full.names = TRUE)
