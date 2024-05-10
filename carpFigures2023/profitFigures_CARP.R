@@ -2,6 +2,8 @@ library(tidyverse)
 library(sf)
 library(stars)
 
+# Yield raster from Clear Springs ----------------------
+
 # #Yield raster from Mike & Annie 2022 (Clear Springs)
 # rast <- read_stars('D:/geoData/SMSexport/202217 CLEAR SPRINGS COLONY/rasters/Mike & Annie_2022.tif') %>%
 #   slice(band,which(st_get_dimension_values(.,3)=='median')) %>% #Get only median yield
@@ -20,25 +22,7 @@ library(stars)
 #   filter(Prov=='Saskatchewan',CropType=='Canola',SoilZone=='Dark Brown')
 # 
 # save('badSpots','fBound','priceDat','rast',file = './carpFigures2023/yieldHistDat.RData')
-# 
-# #Alternate yield raster from Trent Clark
-# rast <- read_stars('D:/geoData/SMSexport/202259 HAYWIRE HILL LTD/rasters/SW 02_2019.tif') %>%
-#   slice(band,which(st_get_dimension_values(.,3)=='median')) %>% #Get only median yield
-#   setNames('Yield_tha')
-# 
-# #Field boundary
-# fBound <- read_sf('D:/geoData/SMSexport/Field Boundaries/202259 HAYWIRE HILL LTD_poly.shp') %>%
-#   filter(Field=='SW 02') %>% st_geometry() %>%
-#   st_transform(st_crs(rast))
-# 
-# #Econ data
-# priceDat <- read.csv('D:/geoData/SMSexport/PPSN_code/data/cropPricesCSV.csv') %>%
-#   filter(Prov=='Saskatchewan',CropType=='Canola',SoilZone=='Dark Brown')
-# 
-# save('rast','priceDat','fBound',file='./carpFigures2023/yieldHistDat2.Rdata')
-
 load('./carpFigures2023/yieldHistDat.RData')
-# load('./carpFigures2023/yieldHistDat2.RData')
 
 #Cells inside field
 inField <- st_intersects(rast,fBound,sparse = FALSE,as_points = TRUE)
@@ -218,3 +202,62 @@ p2 <- ggplot(fBound)+
   theme(axis.text = element_blank(),axis.ticks = element_blank(),panel.grid = element_blank())
 (p <- ggarrange(p1,p2,common.legend = TRUE,legend='right'))
 ggsave('./carpFigures2023/profCatMap_priceDiff.png',plot = p,bg = 'white',dpi = 400)
+
+# Yield raster from Trent Clark -------------------------------------------
+
+# #Alternate yield raster from Trent Clark
+# rast <- read_stars('D:/geoData/SMSexport/202259 HAYWIRE HILL LTD/rasters/SW 02_2019.tif') %>%
+#   slice(band,which(st_get_dimension_values(.,3)=='median')) %>% #Get only median yield
+#   setNames('Yield_tha')
+# 
+# #Field boundary
+# fBound <- read_sf('D:/geoData/SMSexport/Field Boundaries/202259 HAYWIRE HILL LTD_poly.shp') %>%
+#   filter(Field=='SW 02') %>% st_geometry() %>%
+#   st_transform(st_crs(rast))
+# 
+# #Econ data
+# priceDat <- read.csv('D:/geoData/SMSexport/PPSN_code/data/cropPricesCSV.csv') %>%
+#   filter(Prov=='Saskatchewan',CropType=='Canola',SoilZone=='Dark Brown')
+# 
+# save('rast','priceDat','fBound',file='./carpFigures2023/yieldHistDat2.Rdata')
+load('./carpFigures2023/yieldHistDat2.RData')
+
+priceDat$CropPrice_t <- 500
+
+#Cells inside field
+inField <- st_intersects(rast,fBound,sparse = FALSE,as_points = TRUE)
+
+rast <- rast %>% #Changes NA cells within field to 0.01
+  mutate(Yield_tha=Yield_tha) %>%
+  # mutate(Yield_tha=ifelse(is.na(Yield_tha)&inField,0.01,Yield_tha)) %>%
+  mutate(Profit_ha=Yield_tha*priceDat$CropPrice_t-priceDat$AvgCost_ha) %>% 
+  mutate(Profit_ha_cat=cut(Profit_ha,breaks = c(min(Profit_ha,na.rm = TRUE),0,1000,2000,3000,max(Profit_ha,na.rm=TRUE)),include.lowest=TRUE,
+                           labels=c('<$0','$0-1000','$1000-2000','$2000-3000','>$3000'))) %>%
+  mutate(Profit_ha_cat=factor(Profit_ha_cat,levels=rev(levels(Profit_ha_cat)))) %>% 
+  mutate(Profit_ac=Profit_ha/2.47105) %>% 
+  mutate(Profit_ac_cat=cut(Profit_ac,breaks = c(min(Profit_ac,na.rm = TRUE),seq(0,500,100),max(Profit_ac,na.rm=TRUE)),include.lowest=TRUE,
+                           labels=c('<$0','$0-100','$100-200','$200-300','$300-400','$400-500','>$500'))) %>% 
+  mutate(Profit_ac_cat=factor(Profit_ac_cat,levels=rev(levels(Profit_ac_cat))))
+
+#Transform
+epsgCode <- 2957 #Sask UTM 13
+# epsgCode <- 3401 #AB 10 
+fBound <- fBound %>% st_transform(epsgCode)
+rast <- rast %>% st_transform(epsgCode)
+
+#Overall plot
+ggplot(fBound)+
+  geom_stars(data=rast,aes(fill=Profit_ac))+
+  scale_fill_viridis_c(option='E',na.value = NA)+ #Cividis colour scheme
+  theme_bw()+labs(x=NULL,y=NULL,fill='Dollars/ac')+
+  theme(axis.text = element_blank(),axis.ticks = element_blank(),
+        panel.grid = element_blank())
+
+#Categorized plot
+ggplot()+
+    geom_stars(data=rast,aes(fill=Profit_ac_cat),na.action = na.omit)+
+    scale_fill_viridis_d(option='E',na.value = NA,direction = -1)+ #Cividis colour scheme
+    theme_bw()+labs(x=NULL,y=NULL,fill='Dollars\nper acre')+
+    theme(axis.text = element_blank(),axis.ticks = element_blank(),
+          panel.grid = element_blank())
+          # ,legend.position = 'none')
