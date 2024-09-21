@@ -6,19 +6,15 @@ source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R") #Load helper func
 # Unzips all files within a directory
 unzipAll("D:\\geoData\\YieldStorageRaw\\Fall 2023 Data\\202247 Yield Data Files\\202247 Yield Data Files 2019-2023\\",rmOld = TRUE)
 
-dirPath <- "D:\\geoData\\SMSexport\\202231 HILLSBORO FARMS" #Directory path
+dirPath <- "D:\\geoData\\SMSexport\\202213 LAJORD COLONY" #Directory path
 
 #Renames default SMS filenames
-rename_csv(dirPath) 
+rename_csv('./202304 TIERRA FARMS/') 
 
 #Splits large csvs into field-specific ones AND renames columns
 for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
   split_csv(l,TRUE)
 }
-
-#Merge fields that should be together - not really used
-# merge_csv('./SE.Can Sec 1_2022.csv','./Pivot W of 844_2022.csv','./SE.Can Sec 1B_2022.csv')
-
 
 # Clean and process yield data ---------------------------------
 
@@ -29,36 +25,43 @@ for(l in dir(dirPath,pattern = '*.csv',full.names = TRUE)){
 
 #Process multiple directories
 
-dirPaths <- c("D:\\geoData\\SMSexport\\202204 SHANE STROEDER",
-              "D:\\geoData\\SMSexport\\202205 GJ C AND C")
-# dirPaths <- "D:\\geoData\\SMSexport\\202204 SHANE STROEDER"
-dirPaths <- dir('D:\\geoData\\SMSexport\\','.*2022[0-9]{2}\\s',include.dirs = TRUE,full.names = TRUE)
+# dirPaths <- c("D:\\geoData\\SMSexport\\202313 STONE FARMS INC",
+#               "D:\\geoData\\SMSexport\\202314 FOTHERINGHAM FARMS",
+#                "D:\\geoData\\SMSexport\\202315 BLF 5G FARMS",
+#                "D:\\geoData\\SMSexport\\202316 NEVIN FARMS MANITOBA LTD")
+dirPaths <- "D:\\geoData\\SMSexport\\202261 DAVID FORSEILLE"
+#dirPaths <- dir(path = 'D:\\geoData\\SMSexport\\',
+#                pattern='.*202[0-9]{3}\\s',
+#                include.dirs = TRUE,full.names = TRUE)
 
 for(d in dirPaths){ #For each directory
   setwd(d) #Changes working directory to match
   try({rename_csv('.')},silent = TRUE)
   uprLimPath <- "D:\\geoData\\SMSexport\\PPSN_code\\data\\cropBulkDensity.csv" #Upper limit
-  bPolyPath <- paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",basename(d),"_poly.shp")
-  for(l in dir('.','*\\_(19|20)\\d{2}.csv$',full.names = TRUE)){
+  bPolyPath <- paste0("D:\\geoData\\SMSexport\\Field Boundaries\\",basename(d),"_poly.shp") #Field boundary files
+  for(l in dir('.','*\\_(19|20)\\d{2}.csv$',full.names = TRUE)){ #Selects csv files with 1900-2000 years
     if(!dir.exists('./clean')) dir.create('./clean') #Creates "clean" directory if it doesn't already exist
     p1 <- gsub('./','./clean/',l,fixed = TRUE) #csv writing path
     p2 <- gsub('csv$','png',p1) #png writing path
-    split_csv(l,FALSE) #Split files
+    errFile <- gsub('.csv','_ERROR.txt',basename(l))
     if(file.exists(p1)){
       print(paste0(gsub('./','',l),' already processed. Skipping.'))
+    } else if(file.exists(errFile)) {
+      print(paste0(gsub('./','',l),' already processed (with error). Skipping.'))
     } else {
+      split_csv(l,FALSE) #Split files
       try({
         # clean_csv(l,p1,p2,useVega = TRUE,keepFiltCols = TRUE,ncore = 12) #Old version
         clean_csv(path = l,newpath = p1, figpath = p2, upperYieldPath = uprLimPath,
-                   boundaryPath = bPolyPath, useVega = TRUE, ncore = 12,fastRead = TRUE,
+                   boundaryPath = bPolyPath, useVega = TRUE, ncore = 6,fastRead = TRUE,
                    speedR2thresh=0.95,upperSpeed=15)
       },
-      outFile =gsub('.csv','_ERROR.txt',basename(l)))
+      outFile =errFile)
       gc(FALSE)
     }
   }  
 }
-debugonce(clean_csv)
+# debugonce(clean_csv)
 
 # #Files in directory with ERROR files
 # setwd(dirPath)
@@ -78,6 +81,38 @@ debugonce(clean_csv)
 #   }
 # }
 
+# Save cleaned yield data into zipped directories (for export) -------------------
+
+setwd('D:\\geoData\\SMSexport')
+
+# #Subset of directories
+# dirNums <- c(21,26,27,33,39,58) #Directories for export
+# dirNums <- paste0('^(',paste0('2022',dirNums,collapse='|'),')')
+# dirs <- list.files('.',dirNums,include.dirs = TRUE,full.names = TRUE)
+
+#All directories
+dirs <- list.files('.','^202\\d{3}',include.dirs = TRUE,full.names = TRUE)
+
+dirs <- paste0(dirs,'/clean')
+saveDir <- './Data for Export' #Directory to save zip files to
+
+for(i in 1:length(dirs)){
+  zipFileSave <- file.path(saveDir,paste0(strsplit(dirs[i],'/')[[1]][2],'.zip'))
+  if(file.exists(zipFileSave)){
+    print(paste0('Zipped directory ',basename(zipFileSave),' already exists'))
+  } else {
+    print(paste0('Zipping ',basename(zipFileSave)))
+    filesToSave <- list.files(dirs[i],full.names = TRUE)
+    filesToSave <- filesToSave[!grepl('ERROR',filesToSave)]
+    if(length(filesToSave)==0){
+      print(paste0('No files found in ',basename(zipFileSave)))
+    } else {
+      zip(zipFileSave,filesToSave)  
+    }
+  }
+}
+
+
 # Rasterize yield data ----------------------------------------
 
 #Check all folders and rasterize where needed
@@ -86,9 +121,21 @@ if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
   setwd("D:/geoData/SMSexport")
 }
 
-yDirs <- list.dirs('.',full.names = TRUE) #Yield directory
-yDirs <- yDirs[grepl('clean$',yDirs)]
+yDirs <- list.dirs('.',full.names = TRUE) #Yield directories
+yDirs <- yDirs[grepl('clean$',yDirs)] #Anything with "clean" as ending characters
 rDirs <- gsub('clean$','rasters',yDirs) #Raster directory
+
+#Which directories have no rasters?
+numRast <- sapply(rDirs,function(d) length(list.files(d,'.tif$')))
+numRast[numRast==0] #202261 has no useable data
+
+#What is the size of the rasters in the different directories?
+sizeRast <- sapply(rDirs,function(d){
+  flist <- list.files(d,'.tif$',full.names = TRUE)
+  fsize <- file.size(flist)/1000 #KB size
+  return(c('mean'=mean(fsize),'med'=median(fsize),'sd'=sd(fsize),'max'=max(fsize),'min'=min(fsize)))
+})
+t(sizeRast)
 
 # debugonce(rasterizeYield)
 # rasterizeYield(yieldDir = yDirs[3],
@@ -96,6 +143,7 @@ rDirs <- gsub('clean$','rasters',yDirs) #Raster directory
 #                # fieldFiltChar = "2022.csv$",
 #                rastDir = rDirs[i], overwrite = FALSE)  
 
+#Serial processing
 for(i in 1:length(yDirs)){
   try({
     rasterizeYield(yieldDir = yDirs[i],
@@ -105,6 +153,31 @@ for(i in 1:length(yDirs)){
   outFile =gsub('/rasters','_ERROR.txt',rDirs[1]))
   gc()
 }
+
+#Same thing, but in parallel
+
+library(parallel)
+clust <- makeCluster(8)
+
+doRast <- function(inputs){
+  # try({
+    rasterizeYield(yieldDir = inputs[1],
+                   boundDir = "D:\\geoData\\SMSexport\\Field Boundaries",
+                   rastDir = inputs[2])
+  # },
+  # outFile =gsub('/rasters','_ERROR.txt',inputs[2]))
+  gc()
+}
+
+inList <- lapply(1:length(yDirs),function(l) c(yDirs[l],rDirs[l]))
+
+doRast(inList[[1]])
+debugonce(doRast)
+
+clusterEvalQ(cl = clust, expr = {
+  source("D:\\geoData\\SMSexport\\PPSN_code\\helperFunctions.R")
+})
+parLapply(cl = clust,X = inList,fun = doRast) #Run across clusters
 
 # Rasterize selected folders
 
@@ -134,6 +207,23 @@ rasterizeYield(yieldDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM ST
                rastDir = "D:\\geoData\\SMSexport\\202209 DOUBLE E AND STREAM STICK\\rasters", overwrite = FALSE)
 
 # Other things ------------------------------------------------------------
+
+#Which field has large proportion qFilt? (Extreme values)
+
+library(tidyverse)
+library(data.table)
+searchDirs <- dir('..',include.dirs = TRUE,full.names = TRUE) #Get directories
+searchDirs <- paste0(searchDirs[grepl('\\d{6}',searchDirs)],'/clean')
+propFilter <- lapply(searchDirs,function(d){ #Takes quite a while to run this
+  searchFiles <- dir(d,pattern = '\\.csv$',full.names = TRUE)
+  lapply(searchFiles,function(f){
+    apply(fread(f,header = TRUE,
+                select=c('tooLarge','vegaFilt','qFilt','bFilt','speedFilt','dSpeedFilt','posFilt')),2,function(x) sum(!x)/length(x))
+  }) %>% setNames(gsub('(\\.csv$|^.+\\/clean\\/)','',searchFiles)) %>% 
+    bind_rows(.id = 'FieldName')
+})
+save('propFilter',file='./data/propFilter.Rdata')
+
 
 # #Create boundary files for non-SMS directories
 # 

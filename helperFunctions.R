@@ -1,4 +1,4 @@
-## Main functions --------------------------------
+## Helper functions --------------------------------
 
 #Unzip all files within a given directory (including subdirectories)
 unzipAll <- function(d,rmOld=FALSE){
@@ -340,8 +340,6 @@ dSpeedFilter <- function(speed,l=c(-1,1),perc=0.2){
 
 # Make polygons from width, dist, and angle measurements, centered on location from dat
 makePolys <- function(dat,width='w',dist='d',angle='a',backwards=FALSE){
-  if(any(!c(width,dist,angle) %in% colnames(dat))) stop('Width, distance, or angle column not found')
-  
   gType <- dat %>% st_geometry_type(FALSE) #Geometry type
   
   if(gType!='POINT') warning(paste('Input data type is',gType,'not POINT',sep=' '))
@@ -443,6 +441,8 @@ vegaFilter <- function(dat,ycol,pvalCutoff=0.05,nDist=40,spDepInd=FALSE,cluster=
 }
 #Function to clean yield data csvs and adjust for combine differences
 
+## Main function: clean_csv -------------------------------------------
+
 # newpath=NULL : path for cleaned csv to be written
 # figpath=NULL : path for figures to be written
 # upperYield=NULL : upper bound on yield (t/ha)
@@ -541,19 +541,34 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
   } 
   
 
-  #Check for point coverage across field boundary
-  
-  #Create harvest polygons from point data
-  yieldArea <- makePolys(dat, width='SwathWidth_m', dist = 'Distance_m',angle = 'Track_deg')
-  
-  #Filters abnormally large yield polygons - possibly GPS or header errors
-  largePoly <- as.numeric(st_area(yieldArea))>50 | dat$Distance>5  #Larger than 50m2 OR 5m distance
-  if(any(largePoly)){
-    print(paste0(sum(largePoly),' abnormally large yield polygons (>50m2) removed'))
-    yieldArea <- yieldArea %>% filter(!largePoly)
-    dat <- dat %>% filter(!largePoly)
+  #Check for polygon coverage across field boundary
+  if(any(!c('SwathWidth_m','Distance_m','Track_deg') %in% colnames(dat))) stop('Width, distance, or angle column not found')
+  if(any(apply(is.na(dat[,c('SwathWidth_m','Distance_m','Track_deg')]),2,any))){
+    print('Width, distance, or angle column have missing data. Not using in filter process')
+    missingWDA <- TRUE
+    distMat <- st_distance(dat[1:pmin(1000,nrow(dat)),]) #Distance between first 1000 data points
+    units(distMat) <- NULL
+    #Approximates yield polygon coverage using median off-diagonal element (neighbours) distance
+    distMat <- median(distMat[row(distMat)==(col(distMat)-1)])
+    
+    #Fake distance, width, and angle measurements (width = 3 x distance)
+    yieldArea <- dat %>% mutate(Distance_m=distMat,SwathWidth_m=distMat*3,Track_deg=0) %>% 
+      makePolys(width='SwathWidth_m', dist = 'Distance_m',angle = 'Track_deg')
+    
+  } else {
+    missingWDA <- FALSE
+    #Create harvest polygons from point data
+    yieldArea <- makePolys(dat, width='SwathWidth_m', dist = 'Distance_m',angle = 'Track_deg')
+    
+    #Filters abnormally large yield polygons - possibly GPS or header errors
+    largePoly <- as.numeric(st_area(yieldArea))>50 | dat$Distance>5  #Larger than 50m2 OR 5m distance
+    if(any(largePoly)){
+      print(paste0(sum(largePoly),' abnormally large yield polygons (>50m2) removed'))
+      yieldArea <- yieldArea %>% filter(!largePoly)
+      dat <- dat %>% filter(!largePoly)
+    }
   }
-  
+
   propCoverage <- as.numeric(sum(st_area(yieldArea))/sum(st_area(fieldBoundary)))
   if(propCoverage<0.5){ #if less than 50% of field area has data
     if(propCoverage<0.25){
@@ -564,7 +579,7 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
   } else {
     print(paste0(round(100*propCoverage),'% of field boundary has yield data'))
   }
-  
+    
   #Removes data points above upper limit thresholds
   
   # #Rough estimates of "reasonable" maximum yield (t/ha)
@@ -607,53 +622,55 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
     }
   }
   
-  #Check ground speed 
-  nSpeedMiss <- with(dat,sum(is.na(Speed_kmh))) #Missing speed numbers
-  if(nSpeedMiss>0){ 
-    propSpeedMiss <- nSpeedMiss/nrow(dat)
-    spdMsg <- paste0('Ground speed NA at ',nSpeedMiss,' points (',round(100*propSpeedMiss,1),'%)')
-    if(propSpeedMiss>0.9){ #If speed is missing at >90% of points
-      stop(spdMsg)
-    } else {
-      print(spdMsg) 
-      #Fit simple LM to non-zero speed data
-      tempDat <- dat %>% 
-        filter(Speed_kmh!=0 & !is.na(Speed_kmh) & Speed_kmh<upperSpeed) %>% #Remove zeros, NAs, points above upper limit
-        mutate(predSpeed=3.6*Distance_m/Duration_s)
-      
-      speedMod <- lm(Speed_kmh ~ predSpeed,data=tempDat)
-      
-      if(is.null(figpath)){
-        figpath2 <- gsub('\\.csv$','_speedMod.png',newpath)
+  if(!missingWDA){
+    #Check ground speed 
+    nSpeedMiss <- with(dat,sum(is.na(Speed_kmh))) #Missing speed numbers
+    if(nSpeedMiss>0){ 
+      propSpeedMiss <- nSpeedMiss/nrow(dat)
+      spdMsg <- paste0('Ground speed NA at ',nSpeedMiss,' points (',round(100*propSpeedMiss,1),'%)')
+      if(propSpeedMiss>0.9){ #If speed is missing at >90% of points
+        stop(spdMsg)
       } else {
-        figpath2 <- gsub('\\.[a-z]{3}$','_speedMod.png',figpath)
+        print(spdMsg) 
+        #Fit simple LM to non-zero speed data
+        tempDat <- dat %>% 
+          filter(Speed_kmh!=0 & !is.na(Speed_kmh) & Speed_kmh<upperSpeed) %>% #Remove zeros, NAs, points above upper limit
+          mutate(predSpeed=3.6*Distance_m/Duration_s)
+        
+        speedMod <- lm(Speed_kmh ~ predSpeed,data=tempDat)
+        
+        if(is.null(figpath)){
+          figpath2 <- gsub('\\.csv$','_speedMod.png',newpath)
+        } else {
+          figpath2 <- gsub('\\.[a-z]{3}$','_speedMod.png',figpath)
+        }
+        
+        #Make speed prediction figure
+        png(figpath2,width=10, height=10, units = 'in', res = 200)
+        plot(predSpeed~Speed_kmh,data=tempDat,xlab='Measured Ground Speed (km/h)',
+             ylab='Predicted Ground Speed (km/h)',pch=19)
+        abline(speedMod,col='red'); abline(0,1,col='cyan',lty=2)
+        plotText <- paste0('y ~ ',round(coef(speedMod)[1],2),'+ ',
+                           round(coef(speedMod)[2],2),'x\nR^2 = ', 
+                           round(summary(speedMod)$r.squared,3),
+                           '\nMAE = ',round(mean(abs(residuals(speedMod))),3),
+                           '\nNumber of points filled in = ',nSpeedMiss)
+        text(x=max(tempDat$Speed_kmh)*0.15,y=max(tempDat$predSpeed)*0.9,plotText)
+        dev.off()
+        figPath <- NULL
+        
+        if(summary(speedMod)$r.squared<speedR2thresh){
+          warning(paste0('Bad ground speed predictions from Distance/Duration (R2<',speedR2thresh,'). Check output'))
+        }
+        
+        #Fills in missing speed measurements
+        dat <- dat %>% mutate(predSpeed=3.6*Distance_m/Duration_s) %>% 
+          mutate(predSpeed2=predict(speedMod,newdata=.)) %>% 
+          mutate(Speed_kmh = ifelse(is.na(Speed_kmh),predSpeed2,Speed_kmh)) %>% 
+          select(-predSpeed,-predSpeed2)
+        rm(tempDat,speedMod,plotText)
       }
-      
-      #Make speed prediction figure
-      png(figpath2,width=10, height=10, units = 'in', res = 200)
-      plot(predSpeed~Speed_kmh,data=tempDat,xlab='Measured Ground Speed (km/h)',
-           ylab='Predicted Ground Speed (km/h)',pch=19)
-      abline(speedMod,col='red'); abline(0,1,col='cyan',lty=2)
-      plotText <- paste0('y ~ ',round(coef(speedMod)[1],2),'+ ',
-                         round(coef(speedMod)[2],2),'x\nR^2 = ', 
-                         round(summary(speedMod)$r.squared,3),
-                         '\nMAE = ',round(mean(abs(residuals(speedMod))),3),
-                         '\nNumber of points filled in = ',nSpeedMiss)
-      text(x=max(tempDat$Speed_kmh)*0.15,y=max(tempDat$predSpeed)*0.9,plotText)
-      dev.off()
-      figPath <- NULL
-      
-      if(summary(speedMod)$r.squared<speedR2thresh){
-        warning(paste0('Bad ground speed predictions from Distance/Duration (R2<',speedR2thresh,'). Check output'))
-      }
-      
-      #Fills in missing speed measurements
-      dat <- dat %>% mutate(predSpeed=3.6*Distance_m/Duration_s) %>% 
-        mutate(predSpeed2=predict(speedMod,newdata=.)) %>% 
-        mutate(Speed_kmh = ifelse(is.na(Speed_kmh),predSpeed2,Speed_kmh)) %>% 
-        select(-predSpeed,-predSpeed2)
-      rm(tempDat,speedMod,plotText)
-    }
+    }    
   }
   
   #Run filters - TRUE indicates data point passed filtering process (i.e. "acceptable")
@@ -714,8 +731,8 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
       errPath <- gsub('\\.png$',paste0('_part',part,'ERROR.txt'),figpath) #Error path
       sDat <- dat %>% mutate(rID=1:n()) %>% #Row ID
         filter(inFieldPart==part) %>% #Data for field part i
-        mutate(Date_Combine=droplevels(Date_Combine)) %>% 
-        filter(!is.na(Yield_tha_filt)) #Removes filtered data
+        filter(!is.na(Yield_tha_filt)) %>% #Removes filtered data
+        mutate(Date_Combine=droplevels(Date_Combine)) 
       
       if(length(levels(sDat$Date_Combine))==1){
         #If only a single Date/Combine for this field part, skip
@@ -866,8 +883,7 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
   
   #2nd Check for point coverage across field boundary 
   #Create harvest polygons from point data
-  yieldArea <- makePolys(dat, width='SwathWidth_m', dist = 'Distance_m',angle = 'Track_deg')
-  propCoverage <- as.numeric(sum(st_area(yieldArea))/sum(st_area(fieldBoundary)))
+  propCoverage <- as.numeric(sum(st_area(yieldArea[dat$allFilt,]))/sum(st_area(fieldBoundary)))
   if(propCoverage<0.5){ #if less than 50% of field area has data
     if(propCoverage<0.25){
       print("After filtering, less than 25% of field boundary area has yield data. Skipping")
@@ -942,6 +958,8 @@ clean_csv <- function(path,newpath=NULL,figpath=NULL,upperYieldPath=NULL,
 }
 
 
+## Other functions -------------------------
+
 #Function to create boundary multipolygon from crop csvs
 # Output is same format as SMS output - needs to be further processed using cropTypeACI() to get satellite crop type metrics
 # Boundaries are very simple 20m buffered convex hull; need to further 
@@ -989,7 +1007,7 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
   library(sf)
   library(stars)
   
-  # sf_use_s2(FALSE) #Turn off spherical geometry
+  sf_use_s2(FALSE) #Turn off spherical geometry
   
   # Read in boundary shp files for yield data 
   print(paste0('Reading boundary files: ',basename(boundPath)))
@@ -998,14 +1016,19 @@ cropTypeACI <- function(boundPath,invDir = "D:\\geoData\\Rasters\\croplandInvent
   
   if(is.na(st_crs(fieldBoundaries))) stop('CRS for boundary polygons not defined')
   
-  fieldBoundaries <- fieldBoundaries %>% 
+  #NOTE: some problems with self-intersecting lines that isn't solved by st_make_valid() without turning off spherical geometry
+  # Looks like this is solved by transforming to UTM before union, then going back to lat-lon
+  
+  origCRS <- st_crs(fieldBoundaries) #Original CRS
+  
+  fieldBoundaries <- fieldBoundaries %>% st_transform(3401) %>% #Transforms to UTM
     dplyr::select(matches('(Field|^y20\\d{2}$)')) %>% #Select only 
     mutate(Field=gsub('(/|_)','.',Field)) %>% #Replace forwardslash and underscore
     st_make_valid() %>% #Fix geometry if needed
     filter(!st_is_empty(.)) %>% #Remove empty geometries
     group_by(Field) %>% 
     summarize(across(-geometry,first),do_union = TRUE) %>% #Formerly had suppressMessages(), but this was stopping union
-    ungroup()
+    ungroup() %>% st_transform(origCRS)
   
   #Get ACI extent polygons, filter out non-overlapping polygons
   aciExtents <- st_read(file.path(invDir,'aciExtents.shp'),quiet = TRUE) %>% 
@@ -1140,7 +1163,7 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
   if(length(filePaths)==0) stop('No files found in listed directory')
   
   boundPaths <- list.files(boundDir,pattern="*\\.shp$",full.names = TRUE) #Get all shp paths
-  fID <- regmatches(yieldDir,regexpr("2022[0-9]{2}",yieldDir)) #Grower ID #
+  fID <- regmatches(yieldDir,regexpr("202(2|3)[0-9]{2}",yieldDir)) #Grower ID
   if(length(fID)!=1) stop(paste0('No grower IDs found matching ',yieldDir))
   bPath <- boundPaths[grepl(fID,boundPaths)] #Path for boundary shape files
   if(length(bPath)!=1) stop(paste0('No boundary paths found matching grower ID ',fID))
@@ -1153,13 +1176,11 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
       library(tidyverse)
       library(sf)
       library(stars)
-      library(mgcv)
-      library(parallel)
     })
     
     boundPoly <- read_sf(bPath) #Boundary polygons for all fields
-    
-    fieldsFound <- gsub('\\_20[0-9]{2}.csv$','',basename(filePaths)) %in% boundPoly$Field
+    searchExpr <- '\\_(199[0-9]{1}|20[0-9]{2}).csv$' #Search expression - fields from 1990-present
+    fieldsFound <- gsub(searchExpr,'',basename(filePaths)) %in% boundPoly$Field
     if(any(!fieldsFound)){
       stop('No boundaries found for fields:\n',paste0(basename(filePaths)[!fieldsFound],collapse=', '))
     }
@@ -1174,7 +1195,7 @@ rasterizeYield <- function(yieldDir=NULL,boundDir="D:\\geoData\\SMSexport\\Field
         print(paste0(basename(fieldRastPath),' already converted to raster'))
       } else {
         try({
-          fieldName <- gsub('\\_20[0-9]{2}.csv$','',basename(path)) #Get field name from csv path
+          fieldName <- gsub(searchExpr,'',basename(path)) #Get field name from csv path
           fieldBoundPoly <- boundPoly %>% filter(Field==fieldName) #Boundary around individual field
           if(nrow(fieldBoundPoly)==0) stop('No boundary found for Field ',fieldName)
           if(nrow(fieldBoundPoly)>1) stop('Multiple polygons found for Field ',fieldName)
@@ -1278,7 +1299,8 @@ profEstimates <- function(rastDir = NULL,
   #Get provincial/soil zones
   soilProv <- read_sf(soilMapPath) %>%  
     group_by(SoilZone,Prov) %>% summarize(do_union = TRUE,.groups = "keep") %>% 
-    ungroup() %>% st_transform(st_crs(bPoly)) 
+    ungroup() %>% st_transform(st_crs(bPoly)) %>% 
+    st_make_valid()
   
   bPoly <- bPoly %>% st_join(soilProv) 
   
@@ -1299,6 +1321,8 @@ profEstimates <- function(rastDir = NULL,
       st_nearest_feature(st_centroid(st_geometry(bPoly))[noSoil],soilProv)
     ]
   }
+  
+  if(!any(grepl('^y20',colnames(bPoly)))) stop('Year-wise column names (e.g. y2020) not found. Have boundary polygons been processed yet? (Need to run cropTypeACI() in checkCropACI.R)')
   
   bPoly <- bPoly %>% pivot_longer(matches('^y20'),names_to='Year',values_to='CropType') %>% 
     mutate(CropType=factor(gsub('_.*$','',CropType)),Year=as.numeric(gsub('y','',Year))) %>% 

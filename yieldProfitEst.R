@@ -4,7 +4,6 @@
 library(sf)
 library(tidyverse)
 library(scales)
-library(stars)
 library(ggpubr)
 library(rmarkdown)
 
@@ -24,27 +23,27 @@ if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
   rDirs <- rDirs[grepl('/rasters$',rDirs)] #Raster directory  
 }
 source("../helperFunctions.R")
-
-# canProf <- vector('list',length(rDirs))
-# names(canProf) <- basename(gsub('/rasters','',rDirs))
-# {pb <- txtProgressBar(style=3)
-# for(i in 1:length(rDirs)){
-#   if(is.null(canProf[[i]])){
-#     if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
-#       # debugonce(profEstimates)
-#       canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
-#     } else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
-#       canProf[[i]] <- profEstimates(rDirs[i],
-#                                     soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
-#                                     cropPrices = "./data/cropPricesCSV.csv",bulkDens = "./data/cropBulkDensity.csv",
-#                                     boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
-#                                     excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
-#     }
-#   }
-#   setTxtProgressBar(pb,i/length(rDirs))
-# }
-# close(pb)}
-# save('canProf',file='./canProf.Rdata')
+# debugonce(profEstimates)
+canProf <- vector('list',length(rDirs))
+names(canProf) <- basename(gsub('/rasters','',rDirs))
+{pb <- txtProgressBar(style=3)
+for(i in 1:length(rDirs)){
+  if(is.null(canProf[[i]])){
+    if(Sys.info()['nodename'] == 'BIO-RG-PG1'){ #Galpern machine
+      # debugonce(profEstimates)
+      canProf[[i]] <- profEstimates(rDirs[i],excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
+    } else if(Sys.info()['nodename'] == 'MULTIVAC'){ #Multivac:
+      canProf[[i]] <- profEstimates(rDirs[i],
+                                    soilMapPath = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Soil Layers\\PRV_SZ_PDQ_v6\\PRV_SZ_PDQ_v6.shp",
+                                    cropPrices = "./data/cropPricesCSV.csv",bulkDens = "./data/cropBulkDensity.csv",
+                                    boundDir = "C:\\Users\\Samuel\\Dropbox\\PPSN Cleaned Yield\\Field Boundaries",
+                                    excludeMissing = FALSE,includeYield = TRUE,useAcres = TRUE)
+    }
+  }
+  setTxtProgressBar(pb,i/length(rDirs))
+}
+close(pb)}
+save('canProf',file='./canProf.Rdata')
 load('./canProf.Rdata')
   
 # which(sapply(canProf,length)==1)
@@ -93,17 +92,20 @@ uprYieldLim <- canProf[sapply(canProf,length)==4] %>%
 
 
 for(i in 1:length(canProf)){
-  if(class(canProf[[i]])=='logical') next
+  if(class(canProf[[i]])=='logical'){
+    print(paste0('Report ',i,': grower ID ',gID,' has no data. Skipping.'))
+    next
+  } 
   
   gID <- sapply(str_split(names(canProf)[i],' '),first) %>% gsub('-.*','',.)
   gName <- growerDat$FirstName[which(growerDat$GrowerID==gID)]
   fName <- growerDat$BusinessName[which(growerDat$GrowerID==gID)]
   
-  #Skip existing reports (comment out to replace)
-  if(file.exists(paste0('./reports/',gID,'-report.pdf'))){
-    print(paste0('File ',paste0('./reports/',gID,'-report.pdf'),' already exists'))
-    next
-  }
+  # #Skip existing reports (comment out to replace)
+  # if(file.exists(paste0('./reports/',gID,'-report.pdf'))){
+  #   print(paste0('File ',paste0('./reports/',gID,'-report.pdf'),' already exists'))
+  #   next
+  # }
   
   #Data for grower i
   temp <- canProf[[i]] %>% separate(FieldYear,c('Field','Year'),sep='_') %>%
@@ -396,6 +398,7 @@ canProf[[1]] %>%
 
 # Other --------------------------
 
+# library(stars)
 # pltTitle <- paste0('Median profit: $',
 #                    round(median(profCalc),1),
 #                    '/ac\n Unprofitable area: ',
