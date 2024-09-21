@@ -1,0 +1,117 @@
+"Year","Farm","Field","name","DryWeight_lbs","DryVolume_bu","DryYield_bu_ac"
+2022,"Algin Fair Sidlets","Algin Fair NW","Canola",565889,11317.8,56.8
+2022,"Algin Fair Sidlets","Algin Fair Quarter","Canola",363315,7266.3,46
+2022,"Algin Fair Sidlets","Algin House N 3in1","Canola",558528,11170.6,46.5
+2022,"Algin Fair Sidlets","Algin House N 3in1","SpringWheat",35925,598.8,2.5
+2022,"Algin Fair Sidlets","Algin House SE","Canola",796100,15922,51.6
+2022,"Algin Fair Sidlets","Algin House W","Canola",606443,12128.9,53.7
+2022,"Algin Fair Sidlets","Morley Mack","Canola",770137,15402.7,51.8
+2022,"Algin Fair Sidlets","Sidlets Gravel NW","Barley",1012706,21098,103.7
+2022,"Algin Fair Sidlets","Sidlets Gravel S","Barley",705973,14707.8,96.7
+2022,"Algin Fair Sidlets","Sidlets Middle","Barley",361521,7531.7,90.7
+2022,"Algin Fair Sidlets","Sidlets N Field","Barley",344256,7172,101.6
+2022,"Algin Fair Sidlets","Sidlets NE","Barley",1325754,27619.9,106.5
+2022,"Bethune","Berry N","Peas",1097030,18283.8,63.7
+2022,"Bethune","GA House N","Peas",2154588,35909.8,57.2
+2022,"Bethune","GA House SE","Peas",1052324,17538.7,55.2
+2022,"Bethune","GA Section Ian W","Peas",2423542,40392.4,54
+2022,"Bethune","Jimmy NW","Peas",1235565,20592.8,63.1
+2022,"Bethune","Lou Jurdisey","Peas",1179956,19665.9,61
+2022,"Bethune","Mackzine Yard","Barley",1382572,28803.6,90.1
+2022,"Bethune","Riche Bethune E","Peas",563813,9396.9,58.2
+2022,"Black","Black NE Chicken SW","Peas",2042226,34037.1,61.6
+2022,"Black","Black SE","Peas",399644,6660.7,58.2
+2022,"Black","Chicken Barns SE","Peas",815382,13589.7,61.4
+2022,"Black","Gophers","Peas",568673,9477.9,60.5
+2022,"Black","Gophers S Dave Core","Canola",1314127,26282.5,57
+2022,"Black","HY 54~1","Peas",1029527,17158.8,54.4
+2022,"Black","Long Field","Peas",1462002,24366.7,60.9
+2022,"Black","Schandre N Side","Canola",339316,6786.3,52.3
+2022,"Black","Schandre S Side","Canola",51693,1033.9,49
+2022,"Black","Tee Slews","Canola",1958933,39178.7,52.5
+2022,"Black","Triangle","SpringWheat",730590,12176.5,58.9
+2022,"Black","Walter + Black W","SpringWheat",1803880,30064.7,61.6
+2022,"Craven","Craven N","DurumWheat",2904252,48404.2,60.9
+2022,"Craven","Craven S N Side","SpringWheat",860816,14346.9,60.2
+2022,"Craven","Craven S Quarter","SpringWheat",594967,9916.1,60.8
+2022,"Craven","Devin Pinkney N Side","SpringWheat",894839,14914,64.6
+2022,"Craven","Devin Pinkney S Side","SpringWheat",1003915,16731.9,43.8
+2022,"Craven","Grant Yard","DurumWheat",1069742,17829,59.6
+2022,"Craven","Green","DurumWheat",1065245,17754.1,59.5
+2022,"Craven","Gtab Quarter","DurumWheat",489378,8156.3,53
+2022,"Craven","Swift Quarter","DurumWheat",512334,8538.9,56.1
+2022,"Craven","Swift West","DurumWheat",882457,14707.6,52.7
+2022,"Craven","Swift Wolf","DurumWheat",1014390,16906.5,54.1
+2022,"Craven","Tars","DurumWheat",1957442,32624,61
+2022,"Craven","Wally","DurumWheat",1617685,26961.4,58.2
+2022,"Craven","Yard S Quarter","DurumWheat",519067,8651.1,62.3
+2022,"Disley","Disley N Irr","Canola",583356,11667.1,56.9
+2022,"Disley","Disley W Sec","Canola",1740982,34819.6,58.8
+2022,"Disley","Hy 11","Canola",761517,15230.3,51.9
+2022,"Disley","Little Field","Canola",50209,1004.2,55.2
+2022,"Disley","Valley Irr","Canola",311489,6229.8,51.7
+2022,"Disley","Valley Pump Site","Canola",143401,2868,42.7
+2022,"Disley","Wagner Hay","Canola",340352,6807,43.4
+2022,"Disley","Wagner Quarter","Canola",380848,7617,48.8
+2022,"Home","Buffalo Jump E+W","Canola",706319,14126.4,56.8
+2022,"Home","Junk Pile","Peas",2153980,35899.7,52.7
+2022,"Home","Mill E Ranch S","SpringWheat",2197723,36628.7,59
+2022,"Home","Mill S","Barley",36511,760.6,2.9
+2022,"Home","Tree House","Canola",50039,1000.8,6.6
+2022,"Home","Treehouse","Barley",331251,6901.1,60
+2022,"Huber","Archibald","Canola",539667,10793.3,75
+2022,"Huber","Bernard NW","Canola",525018,10500.4,69.6
+2022,"Huber","Bernard Yard","Canola",1089143,21782.9,69
+2022,"Huber","Bernard Yard SW","Canola",177333,3546.7,65.1
+2022,"Huber","Erwin Bateman","Barley",1882332,39215.3,104.8
+2022,"Huber","Graff +Bins E","Canola",357109,7142.2,61
+2022,"Huber","Holt HY 6","Canola",975717,19514.3,69.6
+2022,"Huber","Holt Quarter Otto E","SpringWheat",689691,11494.8,70.9
+2022,"Huber","Holt Yard","SpringWheat",410946,6849.1,49.6
+2022,"Huber","Holt Yard North","SpringWheat",392551,6542.5,55.9
+2022,"Huber","Huber 640","Canola",1641528,32830.6,51.1
+2022,"Huber","Kathleen Burns N","Canola",392780,7855.6,62.7
+2022,"Huber","Kathleen Burns S","Canola",119708,2394.2,59.7
+2022,"Huber","Kathleen Burns Small","Canola",64557,1291.1,60
+2022,"Huber","Lisa 85","Barley",393382,8195.5,98.1
+2022,"Huber","Lumsden S","SpringWheat",3266728,54445.5,67.6
+2022,"Huber","Mobile Grain~1","SpringWheat",502373,8372.9,65
+2022,"Huber","OT N Side","Canola",488938,9778.8,65.7
+2022,"Huber","OT S Side","Canola",547141,10942.8,70.9
+2022,"Huber","OT S Side","SpringWheat",27025,450.4,2.9
+2022,"Huber","Otto 440","SpringWheat",1965108,32751.8,74.2
+2022,"Huber","Otto House E","SpringWheat",2026293,33771.5,69.4
+2022,"Huber","Otto House W","SpringWheat",671260,11187.7,63.7
+2022,"Huber","Otto N","SpringWheat",335724,5595.4,73.9
+2022,"Huber","Otto S","SpringWheat",44546,742.4,29.4
+2022,"Huber","Paul Schro","SpringWheat",336182,5603,57.6
+2022,"Huber","Penny Burns","Canola",825768,16515.4,55.1
+2022,"Huber","Ron Burns","Canola",824409,16488.2,56.2
+2022,"Huber","Ron Lisa Huber","SpringWheat",3249798,54163.3,56.2
+2022,"Huber","Scott Will 100","Barley",455471,9489,96.1
+2022,"Huber","Scott Will 160","Barley",881053,18355.3,114
+2022,"Huber","Small","Barley",2374243,49463.4,109.7
+2022,"Pete","Colony W Quarter","Barley",617167,12857.6,79.8
+2022,"Pete","new break","Barley",533953,11124,71.5
+2022,"Pete","Otto Home","Barley",1057813,22037.8,70.1
+2022,"Pete","Pete All N&S","Barley",4233413,88196.1,91.1
+2022,"Pete","Pete East","Canola",3435862,68717.2,51.8
+2022,"Pete","Sams correl","Canola",139673,2793.5,126.6
+2022,"Rod Koch","Avonhurst N Half Section","SpringWheat",1179836,19663.9,64.3
+2022,"Rod Koch","Avonhurst N quarter","SpringWheat",606586,10109.8,66.5
+2022,"Rod Koch","Avonhurst NE Quarter","SpringWheat",663484,11058.1,62.6
+2022,"Rod Koch","Avonhurst Town","SpringWheat",2377981,39633,59
+2022,"Rod Koch","Edenwold Town","SpringWheat",837864,13964.4,51.3
+2022,"Rod Koch","North Edenwold Section","SpringWheat",1416630,23610.5,36.9
+2022,"Rod Koch","Rod East","SpringWheat",3142276,52371.3,67.8
+2022,"Rod Koch","Rod East East","SpringWheat",3000648,50010.8,68.3
+2022,"Rod Koch","Rod Yard NE","SpringWheat",872935,14548.9,49.8
+2022,"Rod Koch","Yard South","Canola",51636,1032.7,1.7
+2022,"Rod Koch","Yard South","SpringWheat",2285254,38087.6,63.4
+2022,"Young","KS Road E","SpringWheat",439923,7332,58.2
+2022,"Young","KS Road W","SpringWheat",640866,10681.1,67
+2022,"Young","Mike McEwen N","SpringWheat",369630,6160.5,65.3
+2022,"Young","Mike McEwen S","SpringWheat",168952,2815.9,70.6
+2022,"Young","Sec 27 Disley W","SpringWheat",457539,7625.7,53.6
+2022,"Young","Valley & 40","SpringWheat",439749,7329.1,40.6
+2022,"Young","Young House SW","SpringWheat",643084,10718.1,59.3
